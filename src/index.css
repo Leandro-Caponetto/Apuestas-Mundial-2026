@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* CONFIG THEME */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-orange: #f97316;
+}
+
+/* BASE */
+@layer base {
+  body {
+    @apply bg-black text-zinc-100 antialiased overflow-x-hidden;
+
+    /* ✅ ACÁ VA LA IMAGEN */
+    background-image: url('public/assets/logo.svg');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+  }
+}
+
+/* COMPONENTS */
+@layer components {
+  .sport-card {
+    @apply bg-zinc-900/50 backdrop-blur-md border border-zinc-800/50 rounded-[2.5rem] p-8 transition-all hover:border-orange-500/30 shadow-2xl;
+  }
+  
+  .glass {
+    @apply bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/50;
+  }
+
+  .glow-orange {
+    @apply shadow-[0_0_30px_rgba(249,115,22,0.15)];
+  }
+
+  .btn-primary {
+    @apply bg-orange-500 hover:bg-orange-400 text-black font-black uppercase italic tracking-widest py-4 px-8 rounded-2xl transition-all shadow-[0_0_20px_rgba(249,115,22,0.3)] disabled:opacity-50 active:scale-95;
+  }
+
+  .text-glow {
+    text-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+  }
+}
+
+/* SCROLL */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-zinc-800 rounded-full hover:bg-zinc-700 transition-all;
+}
