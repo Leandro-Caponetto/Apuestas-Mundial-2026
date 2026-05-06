@@ -17,8 +17,9 @@ import { toast } from 'react-hot-toast';
 
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
-// Use standard path for public assets in Vite
-const logo = '/assets/logo.svg';
+// Logo oficial con la copa (26 con el trofeo)
+import logo from '../../public/assets/logo.svg';
+
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('partidos');
@@ -31,39 +32,50 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
 
   // Bracket State
   const [bracketRounds, setBracketRounds] = useState<any[]>([]);
 
   const loadProfile = async (userId: string) => {
-    const prof = await dbService.getProfile(userId);
-    setProfile(prof);
+    try {
+      const prof = await dbService.getProfile(userId);
+      if (prof) setProfile(prof);
+    } catch (err) {
+      console.error('Error loading profile:', err);
+    }
   };
 
   const loadRanking = async () => {
-    const data = await dbService.getRanking();
-    setRanking(data);
+    try {
+      const data = await dbService.getRanking();
+      setRanking(data);
+    } catch (err) {
+      console.error('Error loading ranking:', err);
+    }
   };
 
   useEffect(() => {
     // Auth Session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) loadProfile(session.user.id);
-      setIsAdmin(session?.user?.email === 'caponettopeppers@gmail.com');
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) loadProfile(currentUser.id);
+      setIsAdmin(currentUser?.email === 'caponettopeppers@gmail.com');
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) loadProfile(session.user.id);
-      setIsAdmin(session?.user?.email === 'caponettopeppers@gmail.com');
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) loadProfile(currentUser.id);
+      setIsAdmin(currentUser?.email === 'caponettopeppers@gmail.com');
     });
 
     loadRanking();
 
     // Data Subscriptions
     const unsubscribeBracket = dbService.subscribeBracket((rounds) => {
-      setBracketRounds(rounds);
+      if (rounds) setBracketRounds(rounds);
     });
 
     const unsubscribeMatches = dbService.subscribeMatches((newMatches) => {
@@ -86,7 +98,6 @@ export default function Home() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginMessage, setLoginMessage] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +128,11 @@ export default function Home() {
       password,
     });
     if (error) {
-      setLoginMessage('Error: ' + error.message);
+      if (error.message.includes('rate limit')) {
+        setLoginMessage('Límite de emails: Supabase (Plan Gratis) solo permite 2 registros por hora. Espera un rato o configura un SMTP propio.');
+      } else {
+        setLoginMessage('Error: ' + error.message);
+      }
     } else {
       setLoginMessage('¡Cuenta creada! Revisa tu email para confirmar.');
     }
@@ -386,70 +401,51 @@ export default function Home() {
               >
                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
                 <DollarSign size={20} className="relative z-10" />
-                <span className="relative z-10">ZONA DE PREEDICCIÓN</span>
+                <span className="relative z-10">ZONA DE PREDICCIÓN</span>
               </Link>
 
               {user ? (
-                <div className="flex flex-wrap items-center gap-6 p-2 pr-6 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
-                  <div className="flex items-center gap-4">
-                    <div 
-                      className="relative w-14 h-14 rounded-2xl bg-zinc-950 border border-orange-500/20 overflow-hidden flex items-center justify-center text-orange-500 font-black italic cursor-pointer group/avatar-nav"
-                      onClick={() => {
-                        setUsernameInput(profile?.username || '');
-                        setShowProfileModal(true);
-                      }}
-                    >
-                      {profile?.avatar_url ? (
-                         <img src={profile.avatar_url} alt="Avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-xl">{user.email?.[0].toUpperCase()}</span>
-                      )}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/avatar-nav:opacity-100 flex items-center justify-center transition-opacity">
-                        <Camera size={16} className="text-white" />
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col">
+                <div className="flex flex-wrap items-center gap-4 p-2 pr-6 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-full shadow-2xl relative overflow-hidden group">
+                   <div 
+                    className="relative w-12 h-12 rounded-full border-2 border-orange-500/20 overflow-hidden flex items-center justify-center bg-zinc-950 cursor-pointer hover:border-orange-500 transition-all"
+                    onClick={() => {
+                      setUsernameInput(profile?.username || '');
+                      setShowProfileModal(true);
+                    }}
+                   >
+                     {profile?.avatar_url ? (
+                        <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                     ) : (
+                        <span className="text-orange-500 font-black italic">{user.email?.[0].toUpperCase()}</span>
+                     )}
+                   </div>
+
+                   <div className="flex flex-col">
                       <div className="flex items-center gap-2">
-                        <span className="text-white font-black italic text-lg tracking-tighter uppercase">
+                        <span className="text-white font-black italic text-sm uppercase tracking-tighter">
                           {profile?.username || user.email.split('@')[0]}
                         </span>
                         {isAdmin && (
-                          <span className="text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-                            ADMIN
-                          </span>
+                          <span className="text-[7px] font-black text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20">ADMIN</span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest leading-none">
-                          {profile?.points || 0} PTS
-                        </span>
+                      <div className="flex items-center gap-2 text-[9px] font-bold">
+                        <span className="text-zinc-500 uppercase tracking-widest">{profile?.points || 0} PTS</span>
                         <div className="w-1 h-1 rounded-full bg-zinc-800" />
-                        <span className="text-[9px] text-orange-500 font-black uppercase tracking-widest leading-none">
-                          RANK #{ranking.findIndex(r => r.id === user.id) + 1 || '---'}
-                        </span>
+                        <span className="text-orange-500 uppercase tracking-widest">RANKING #{ranking.findIndex(r => r.id === user.id) + 1 || '--'}</span>
                       </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 border-l border-zinc-800 pl-4">
-                    {isAdmin && (
-                      <button 
-                        onClick={handleSeed}
-                        className="p-3 bg-zinc-800 hover:bg-orange-500 text-zinc-500 hover:text-black rounded-xl transition-all border border-zinc-700/50"
-                        title="Inicializar Base de Datos"
-                      >
-                        <Database size={16} />
+                   </div>
+
+                   <div className="flex items-center gap-1 border-l border-white/5 pl-4">
+                      {isAdmin && (
+                        <button onClick={handleSeed} title="DB Seed" className="p-2 text-zinc-500 hover:text-white transition-colors">
+                          <Database size={14} />
+                        </button>
+                      )}
+                      <button onClick={handleSignOut} title="Cerrar Sesión" className="p-2 text-zinc-500 hover:text-red-500 transition-colors">
+                        <LogOut size={14} />
                       </button>
-                    )}
-                    <button 
-                      onClick={handleSignOut}
-                      className="p-3 bg-zinc-800 hover:bg-red-500 text-zinc-500 hover:text-white rounded-xl transition-all border border-zinc-700/50"
-                      title="Cerrar Sesión"
-                    >
-                      <LogOut size={16} />
-                    </button>
-                  </div>
+                   </div>
                 </div>
               ) : (
                 <div className="max-w-md w-full mx-auto md:mx-0">
@@ -537,32 +533,32 @@ export default function Home() {
             className="relative w-full md:w-[450px] aspect-square flex items-center justify-center pt-8 md:pt-0"
           >
             <div className="absolute inset-0 bg-white/5 blur-[120px] rounded-full" />
-            <img 
-              src={logo}
-              className="w-full h-full object-contain relative z-10"
-              alt="FIFA World Cup 2026 Official Logo"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
+                 <img 
+  src={logo}
+  className="w-full h-full object-contain relative z-10"
+  alt="FIFA World Cup 2026 Official Logo"
+  onError={(e) => {
+    const target = e.target as HTMLImageElement;
+    target.style.display = 'none';
 
-                const parent = target.parentElement;
-                if (parent && !parent.querySelector('.fallback-msg')) {
-                  const fallback = document.createElement('div');
-                  fallback.className = 'fallback-msg absolute inset-0 flex flex-col items-center justify-center text-center z-10';
+    const parent = target.parentElement;
+    if (parent && !parent.querySelector('.fallback-msg')) {
+      const fallback = document.createElement('div');
+      fallback.className = 'fallback-msg absolute inset-0 flex flex-col items-center justify-center text-center z-10';
 
-                  fallback.innerHTML = `
-                    <span class="text-8xl md:text-9xl font-black text-white italic tracking-tighter leading-none select-none">
-                      20<span class="text-orange-500">26</span>
-                    </span>
-                    <span class="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-white/20 mt-6 italic border-t border-white/5 pt-4">
-                      Copa del Mundo
-                    </span>
-                  `;
+      fallback.innerHTML = `
+        <span class="text-8xl md:text-9xl font-black text-white italic tracking-tighter leading-none select-none">
+          20<span class="text-orange-500">26</span>
+        </span>
+        <span class="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-white/20 mt-6 italic border-t border-white/5 pt-4">
+          Copa del Mundo
+        </span>
+      `;
 
-                  parent.appendChild(fallback);
-                }
-              }}
-            />
+      parent.appendChild(fallback);
+    }
+  }}
+/>
           </motion.div>
         </div>
       </header>

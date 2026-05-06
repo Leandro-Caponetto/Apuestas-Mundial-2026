@@ -76,7 +76,7 @@ export const dbService = {
     const subscription = supabase
       .channel('public:tournament_metadata')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_metadata', filter: 'key=eq.bracket' }, (payload) => {
-        if (payload.new && (payload.new as any).data) {
+        if (payload && payload.new && (payload.new as any).data) {
           callback((payload.new as any).data);
         }
       })
@@ -102,17 +102,22 @@ export const dbService = {
 
     if (!data) {
       // El perfil no existe todavía, lo creamos
-      const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
-        .insert([{ id: userId, points: 0 }])
-        .select()
-        .single();
-      
-      if (createError) {
-        console.error('Error creating profile:', createError);
+      try {
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert([{ id: userId, points: 0, username: 'JUGADOR NUEVO' }])
+          .select()
+          .single();
+        
+        if (createError) {
+          console.warn('Could not create profile automatically (probably RLS):', createError.message);
+          return null;
+        }
+        return newProfile as Profile;
+      } catch (err) {
+        console.error('Fatal profile creation error:', err);
         return null;
       }
-      return newProfile as Profile;
     }
     return data as Profile;
   },
