@@ -1,63 +1,104 @@
 import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { Trophy, Home, User, Settings, LogOut, LayoutDashboard, ListOrdered, DollarSign } from 'lucide-react';
+import { Trophy, Home, User as UserIcon, Settings, LogOut, LayoutDashboard, ListOrdered, DollarSign } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Profile } from '@/types';
-
-import { MOCK_USER } from '@/lib/mockData';
+import { dbService } from '@/services/dbService';
 
 export function Navbar() {
   const location = useLocation();
-  const [profile, setProfile] = useState<Profile | null>(MOCK_USER);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    // Simulating user data
-    setProfile(MOCK_USER);
-  }, []);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        dbService.getProfile(session.user.id).then(setProfile);
+      }
+    });
 
-  async function fetchProfile() {
-    // No-op
-  }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        dbService.getProfile(session.user.id).then(setProfile);
+      } else {
+        setProfile(null);
+      }
+    });
+
+    // Subscripción a cambios en el perfil
+    let profileSubscription: any = null;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        profileSubscription = supabase
+          .channel(`profile:${session.user.id}`)
+          .on('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'profiles',
+            filter: `id=eq.${session.user.id}`
+          }, (payload) => {
+            setProfile(payload.new as Profile);
+          })
+          .subscribe();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (profileSubscription) supabase.removeChannel(profileSubscription);
+    };
+  }, []);
 
   const navItems = [
     { name: 'Inicio', href: '/', icon: Home },
     { name: 'Apuestas', href: '/betting', icon: DollarSign },
     { name: 'Ranking', href: '/leaderboard', icon: ListOrdered },
-    { name: 'Liga Privada', href: '/leagues', icon: Trophy },
+    { name: 'Liga', href: '/leagues', icon: Trophy },
   ];
 
   return (
-    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 p-2 rounded-full z-50 flex items-center gap-1 shadow-2xl md:top-6 md:bottom-auto">
-      {navItems.map((item) => (
-        <Link
-          key={item.href}
-          to={item.href}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold tracking-tighter uppercase italic transition-all ${
-            location.pathname === item.href
-              ? 'bg-orange-500 text-black'
-              : 'text-zinc-500 hover:text-white'
-          }`}
-        >
-          <item.icon size={18} />
-          <span className="hidden md:inline">{item.name}</span>
-        </Link>
-      ))}
-      <div className="w-[1px] h-6 bg-zinc-800 mx-1" />
-      <Link
-        to="/profile"
-        className="flex items-center gap-2 pl-2 pr-4 py-2 rounded-full hover:bg-zinc-800 transition-all"
-      >
-        <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center">
-          {profile?.avatar_url ? (
-            <img src={profile.avatar_url} className="w-full h-full object-cover" />
-          ) : (
-            <User size={16} className="text-zinc-500" />
-          )}
-        </div>
-        <span className="text-white text-xs font-black uppercase italic hidden md:inline">
-          {profile?.points || 0} PTS
-        </span>
-      </Link>
+    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-zinc-900/90 backdrop-blur-2xl border border-zinc-800 p-2 rounded-full z-50 flex items-center gap-1 shadow-[0_20px_50px_rgba(0,0,0,0.5)] md:top-6 md:bottom-auto md:h-fit">
+      <div className="flex items-center gap-1 px-1">
+        {navItems.map((item) => (
+          <Link
+            key={item.href}
+            to={item.href}
+            className={`flex items-center gap-2 px-6 py-3 rounded-full text-[10px] font-black tracking-[0.2em] uppercase italic transition-all duration-300 ${
+              location.pathname === item.href
+                ? 'bg-orange-500 text-black shadow-[0_0_20px_rgba(249,115,22,0.4)]'
+                : 'text-zinc-500 hover:text-white hover:bg-zinc-800/50'
+            }`}
+          >
+            <item.icon size={16} strokeWidth={3} />
+            <span className="hidden md:inline">{item.name}</span>
+          </Link>
+        ))}
+      </div>
+      
+      {user && (
+        <>
+          <div className="w-[1px] h-6 bg-zinc-800 mx-2" />
+          <Link
+            to="/profile"
+            className="flex items-center gap-3 pl-1.5 pr-6 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/50 rounded-full transition-all group lg:min-w-[120px]"
+          >
+            <div className="w-10 h-10 rounded-full bg-zinc-900 border-2 border-orange-500/0 group-hover:border-orange-500/50 overflow-hidden flex items-center justify-center transition-all">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <UserIcon size={18} className="text-zinc-500" />
+              )}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-white text-xs font-black uppercase italic tracking-tighter leading-none">
+                {profile?.points || 0} <span className="text-[10px] text-orange-500">PTS</span>
+              </span>
+            </div>
+          </Link>
+        </>
+      )}
     </nav>
   );
 }

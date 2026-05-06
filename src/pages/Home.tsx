@@ -3,9 +3,9 @@ import { MatchCard } from '@/components/MatchCard';
 import { GroupGrid } from '@/components/GroupGrid';
 import { TeamExplorer } from '@/components/TeamExplorer';
 import { PredictionCenter } from '@/components/PredictionCenter';
-import { Match, Team } from '@/types';
+import { Match, Team, Profile } from '@/types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Calendar, LayoutGrid, Award, Search, Info, DollarSign, LogIn, LogOut, Database } from 'lucide-react';
+import { Trophy, Calendar, LayoutGrid, Award, Search, Info, DollarSign, LogIn, LogOut, Database, User as UserIcon, Camera, Edit2, Loader2, ListOrdered, ChevronRight, Settings as SettingsIcon, X } from 'lucide-react';
 import { TournamentBracket } from '@/components/TournamentBracket';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { MOCK_MATCHES } from '@/lib/mockData';
@@ -13,33 +13,53 @@ import { GROUPS, WORLD_CUP_TEAMS } from '@/lib/constants';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { dbService } from '@/services/dbService';
+import { toast } from 'react-hot-toast';
 
+type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
-import logo from '../../public/assets/logo.svg';
-
-type Tab = 'partidos' | 'grupos' | 'bracket';
+// Use standard path for public assets in Vite
+const logo = '/assets/logo.svg';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('partidos');
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [ranking, setRanking] = useState<Profile[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [usernameInput, setUsernameInput] = useState('');
 
   // Bracket State
   const [bracketRounds, setBracketRounds] = useState<any[]>([]);
+
+  const loadProfile = async (userId: string) => {
+    const prof = await dbService.getProfile(userId);
+    setProfile(prof);
+  };
+
+  const loadRanking = async () => {
+    const data = await dbService.getRanking();
+    setRanking(data);
+  };
 
   useEffect(() => {
     // Auth Session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+      if (session?.user) loadProfile(session.user.id);
       setIsAdmin(session?.user?.email === 'caponettopeppers@gmail.com');
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (session?.user) loadProfile(session.user.id);
       setIsAdmin(session?.user?.email === 'caponettopeppers@gmail.com');
     });
+
+    loadRanking();
 
     // Data Subscriptions
     const unsubscribeBracket = dbService.subscribeBracket((rounds) => {
@@ -66,6 +86,7 @@ export default function Home() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginMessage, setLoginMessage] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +105,8 @@ export default function Home() {
     }
   };
 
-  const handleSignUp = async () => {
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!email || !password) {
       setLoginMessage('Introduce email y contraseña');
       return;
@@ -104,7 +126,65 @@ export default function Home() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setProfile(null);
     setIsAdmin(false);
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user || !e.target.files || e.target.files.length === 0) return;
+    
+    const file = e.target.files[0];
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('La imagen es demasiado grande (máx 2MB)');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      const { url, error } = await dbService.uploadAvatar(user.id, file);
+      
+      if (error) {
+        const errorLower = error.toLowerCase();
+        if (errorLower.includes('bucket not found')) {
+          toast.error('Configuración: Crea el bucket "avatars" en Supabase Storage y hazlo PÚBLICO.', { duration: 8000 });
+        } else if (errorLower.includes('security policy') || errorLower.includes('row-level security') || errorLower.includes('rls')) {
+          toast.error('Permisos: Ejecuta el SQL de RLS para el bucket "avatars" en tu panel de Supabase.', { duration: 10000 });
+        } else {
+          toast.error(`Error de Supabase: ${error}`);
+        }
+        return;
+      }
+
+      if (url) {
+        const finalUrl = `${url}?t=${Date.now()}`;
+        await dbService.updateProfile(user.id, { avatar_url: finalUrl });
+        await loadProfile(user.id);
+        await loadRanking();
+        toast.success('¡Foto actualizada!', { icon: '📸' });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al subir la imagen');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleUpdateUsername = async () => {
+    if (!user || !usernameInput.trim()) return;
+    
+    const loadingToast = toast.loading('Actualizando nombre...');
+    try {
+      await dbService.updateProfile(user.id, { username: usernameInput.trim() });
+      await loadProfile(user.id);
+      await loadRanking();
+      setUsernameInput('');
+      setShowProfileModal(false);
+      toast.success('Nombre actualizado', { id: loadingToast });
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al actualizar nombre', { id: loadingToast });
+    }
   };
 
   const handleUpdateBracketScore = async (roundName: string, matchId: string, side: 'home' | 'away', value: string) => {
@@ -300,24 +380,55 @@ export default function Home() {
               className="flex flex-wrap items-center gap-4"
             >
               <Link 
-                to="/betting"
+                to="/"
+                onClick={() => setActiveTab('partidos')}
                 className="group relative inline-flex items-center gap-3 px-8 py-4 bg-linear-to-r from-orange-500 to-amber-500 rounded-2xl text-black font-black uppercase italic tracking-widest text-sm shadow-[0_10px_30px_rgba(249,115,22,0.3)] hover:shadow-[0_15px_40px_rgba(249,115,22,0.4)] transition-all overflow-hidden"
               >
                 <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
                 <DollarSign size={20} className="relative z-10" />
-                <span className="relative z-10">ZONA DE APUESTAS</span>
+                <span className="relative z-10">ZONA DE PREEDICCIÓN</span>
               </Link>
 
               {user ? (
-                <div className="flex items-center gap-6 p-2 pr-6 bg-zinc-900/50 border border-zinc-800 rounded-[2rem] shadow-2xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500 font-black italic shadow-inner">
-                      {user.email?.[0].toUpperCase()}
+                <div className="flex flex-wrap items-center gap-6 p-2 pr-6 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
+                  <div className="flex items-center gap-4">
+                    <div 
+                      className="relative w-14 h-14 rounded-2xl bg-zinc-950 border border-orange-500/20 overflow-hidden flex items-center justify-center text-orange-500 font-black italic cursor-pointer group/avatar-nav"
+                      onClick={() => {
+                        setUsernameInput(profile?.username || '');
+                        setShowProfileModal(true);
+                      }}
+                    >
+                      {profile?.avatar_url ? (
+                         <img src={profile.avatar_url} alt="Avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-xl">{user.email?.[0].toUpperCase()}</span>
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/avatar-nav:opacity-100 flex items-center justify-center transition-opacity">
+                        <Camera size={16} className="text-white" />
+                      </div>
                     </div>
+                    
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest leading-none mb-1">CONECTADO</span>
-                      <span className="text-white font-black italic text-sm leading-none">{user.email}</span>
-                      {isAdmin && <span className="text-emerald-400 text-[8px] font-black uppercase tracking-[0.2em] mt-2 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20 w-fit">ADMINISTRADOR</span>}
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-black italic text-lg tracking-tighter uppercase">
+                          {profile?.username || user.email.split('@')[0]}
+                        </span>
+                        {isAdmin && (
+                          <span className="text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                            ADMIN
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest leading-none">
+                          {profile?.points || 0} PTS
+                        </span>
+                        <div className="w-1 h-1 rounded-full bg-zinc-800" />
+                        <span className="text-[9px] text-orange-500 font-black uppercase tracking-widest leading-none">
+                          RANK #{ranking.findIndex(r => r.id === user.id) + 1 || '---'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   
@@ -325,68 +436,83 @@ export default function Home() {
                     {isAdmin && (
                       <button 
                         onClick={handleSeed}
+                        className="p-3 bg-zinc-800 hover:bg-orange-500 text-zinc-500 hover:text-black rounded-xl transition-all border border-zinc-700/50"
                         title="Inicializar Base de Datos"
-                        className="p-3 bg-zinc-800 hover:bg-blue-600 text-zinc-400 hover:text-white rounded-xl transition-all"
                       >
-                        <Database size={18} />
+                        <Database size={16} />
                       </button>
                     )}
                     <button 
                       onClick={handleSignOut}
-                      className="flex items-center gap-2 px-5 py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-white font-black uppercase italic tracking-widest text-[10px] transition-all shadow-lg"
+                      className="p-3 bg-zinc-800 hover:bg-red-500 text-zinc-500 hover:text-white rounded-xl transition-all border border-zinc-700/50"
+                      title="Cerrar Sesión"
                     >
-                      <LogOut size={14} /> SALIR
+                      <LogOut size={16} />
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-end gap-3 p-6 bg-zinc-900 border border-zinc-800 rounded-[2.5rem] shadow-2xl">
-                  <div className="w-full flex items-center justify-between gap-4 mb-1">
-                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em] italic">Acceso de Usuario</span>
-                    <LogIn size={14} className="text-orange-500" />
+                <div className="max-w-md w-full mx-auto md:mx-0">
+                  <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
+                    <div className="absolute inset-0 bg-linear-to-b from-orange-500/5 to-transparent opacity-50" />
+                    <div className="relative z-10 space-y-6">
+                      <div className="flex items-center justify-between border-b border-zinc-800 pb-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:text-orange-500 transition-colors">
+                            {isRegistering ? <UserIcon size={24} /> : <LogIn size={24} />}
+                          </div>
+                          <div className="text-left">
+                            <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">
+                              {isRegistering ? 'Registro' : 'Acceso'}
+                            </h3>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest italic leading-none opacity-40">Mundial 2026</p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => setIsRegistering(!isRegistering)}
+                          className="bg-zinc-800/30 hover:bg-zinc-800 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-zinc-500 hover:text-white transition-all border border-zinc-700/30"
+                        >
+                          {isRegistering ? 'YA TENGO CUENTA' : 'REGISTRARME'}
+                        </button>
+                      </div>
+                      
+                      <form onSubmit={isRegistering ? handleSignUp : handleSignIn} className="space-y-3">
+                        <div className="space-y-2">
+                          <input 
+                            type="email"
+                            placeholder="TU EMAIL"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full bg-zinc-950/30 border border-zinc-800 rounded-2xl px-6 py-4 text-[10px] font-black italic tracking-widest text-white uppercase outline-none focus:border-orange-500/50 transition-all placeholder:text-zinc-700 shadow-inner"
+                            required
+                          />
+                          <input 
+                            type="password"
+                            placeholder="TU CONTRASEÑA"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full bg-zinc-950/30 border border-zinc-800 rounded-2xl px-6 py-4 text-[10px] font-black italic tracking-widest text-white uppercase outline-none focus:border-orange-500/50 transition-all placeholder:text-zinc-700 shadow-inner"
+                            required
+                          />
+                        </div>
+                        
+                        <button 
+                          type="submit"
+                          className="w-full py-4 bg-white hover:bg-orange-500 text-black font-black uppercase italic tracking-widest text-xs rounded-2xl transition-all shadow-xl shadow-white/5 active:scale-95 flex items-center justify-center gap-3"
+                        >
+                          {isRegistering ? 'COMPLETAR REGISTRO' : 'ENTRAR AL JUEGO'}
+                          <ChevronRight size={16} />
+                        </button>
+                      </form>
+                      {loginMessage && (
+                        <div className={`p-4 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] text-center border ${
+                          loginMessage.includes('Error') ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-orange-500/10 border-orange-500/20 text-orange-500'
+                        }`}>
+                          {loginMessage}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  
-                  <form onSubmit={handleSignIn} className="flex flex-col gap-3 w-full">
-                    <div className="space-y-2">
-                      <input 
-                        type="email"
-                        placeholder="EMAIL"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white text-xs font-bold focus:outline-none focus:border-orange-500 transition-all"
-                        required
-                      />
-                      <input 
-                        type="password"
-                        placeholder="CONTRASEÑA"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white text-xs font-bold focus:outline-none focus:border-orange-500 transition-all"
-                        required
-                      />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <button 
-                        type="submit"
-                        className="flex items-center justify-center gap-2 px-4 py-3 bg-white text-black font-black uppercase italic tracking-widest text-[10px] rounded-xl hover:bg-orange-500 transition-all shadow-xl"
-                      >
-                        ENTRAR
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={handleSignUp}
-                        className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-800 text-zinc-400 font-black uppercase italic tracking-widest text-[10px] rounded-xl hover:bg-zinc-700 transition-all"
-                      >
-                        REGISTRARSE
-                      </button>
-                    </div>
-                  </form>
-                  {loginMessage && (
-                    <div className="w-full text-center py-2 bg-orange-500/5 rounded-lg border border-orange-500/10">
-                      <span className="text-[9px] font-black text-orange-500 uppercase italic tracking-wider">{loginMessage}</span>
-                    </div>
-                  )}
                 </div>
               )}
             </motion.div>
@@ -412,31 +538,31 @@ export default function Home() {
           >
             <div className="absolute inset-0 bg-white/5 blur-[120px] rounded-full" />
             <img 
-  src={logo}
-  className="w-full h-full object-contain relative z-10"
-  alt="FIFA World Cup 2026 Official Logo"
-  onError={(e) => {
-    const target = e.target as HTMLImageElement;
-    target.style.display = 'none';
+              src={logo}
+              className="w-full h-full object-contain relative z-10"
+              alt="FIFA World Cup 2026 Official Logo"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
 
-    const parent = target.parentElement;
-    if (parent && !parent.querySelector('.fallback-msg')) {
-      const fallback = document.createElement('div');
-      fallback.className = 'fallback-msg absolute inset-0 flex flex-col items-center justify-center text-center z-10';
+                const parent = target.parentElement;
+                if (parent && !parent.querySelector('.fallback-msg')) {
+                  const fallback = document.createElement('div');
+                  fallback.className = 'fallback-msg absolute inset-0 flex flex-col items-center justify-center text-center z-10';
 
-      fallback.innerHTML = `
-        <span class="text-8xl md:text-9xl font-black text-white italic tracking-tighter leading-none select-none">
-          20<span class="text-orange-500">26</span>
-        </span>
-        <span class="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-white/20 mt-6 italic border-t border-white/5 pt-4">
-          Copa del Mundo
-        </span>
-      `;
+                  fallback.innerHTML = `
+                    <span class="text-8xl md:text-9xl font-black text-white italic tracking-tighter leading-none select-none">
+                      20<span class="text-orange-500">26</span>
+                    </span>
+                    <span class="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-white/20 mt-6 italic border-t border-white/5 pt-4">
+                      Copa del Mundo
+                    </span>
+                  `;
 
-      parent.appendChild(fallback);
-    }
-  }}
-/>
+                  parent.appendChild(fallback);
+                }
+              }}
+            />
           </motion.div>
         </div>
       </header>
@@ -448,6 +574,7 @@ export default function Home() {
             { id: 'partidos', label: 'Fixture', icon: Calendar },
             { id: 'grupos', label: 'Grupos', icon: LayoutGrid },
             { id: 'bracket', label: 'Eliminatorias', icon: Trophy },
+            { id: 'ranking', label: 'Ranking', icon: ListOrdered },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -608,31 +735,11 @@ export default function Home() {
               </div>
               
               <div className="relative">
-                {bracketRounds && bracketRounds.length > 0 ? (
-                  <TournamentBracket 
-                    rounds={bracketRounds} 
-                    onUpdateScore={handleUpdateBracketScore}
-                    onSetWinner={handleSetWinnerAtSlot}
-                  />
-                ) : (
-                  <div className="max-w-4xl mx-auto px-8 py-32 text-center">
-                    <div className="sport-card p-12 border-orange-500/20 bg-orange-500/5 group">
-                      <Trophy size={64} className="mx-auto text-orange-500/20 mb-8 group-hover:text-orange-500 group-hover:scale-110 transition-all duration-700" />
-                      <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter mb-4">El cuadro aún no está definido</h3>
-                      <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest leading-relaxed max-w-md mx-auto italic">
-                        Las eliminatorias se cargarán automáticamente cuando finalice la fase de grupos o cuando el administrador inicialice la base de datos.
-                      </p>
-                      {isAdmin && (
-                        <button 
-                          onClick={handleSeed}
-                          className="mt-12 flex items-center gap-3 mx-auto px-10 py-5 bg-orange-500 hover:bg-orange-600 text-black font-black uppercase italic tracking-[0.2em] text-xs rounded-2xl transition-all shadow-2xl shadow-orange-500/20"
-                        >
-                          <Database size={20} /> Inicializar Datos del Mundial
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <TournamentBracket 
+                  rounds={bracketRounds} 
+                  onUpdateScore={handleUpdateBracketScore}
+                  onSetWinner={handleSetWinnerAtSlot}
+                />
               </div>
 
               <div className="max-w-7xl mx-auto px-8 py-20 text-center">
@@ -649,8 +756,158 @@ export default function Home() {
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'ranking' && (
+            <motion.div 
+              key="ranking"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-4xl mx-auto space-y-12"
+            >
+              <div className="text-center space-y-4">
+                <div className="inline-flex items-center gap-3 px-6 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-black uppercase tracking-[0.3em] italic">
+                  <Award size={14} /> Tabla de Posiciones Global
+                </div>
+                <h1 className="text-5xl md:text-8xl font-black uppercase italic tracking-tighter text-white leading-none">
+                  Ranking <span className="text-orange-500 text-glow">Mundial</span>
+                </h1>
+              </div>
+
+              <div className="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-[3rem] overflow-hidden shadow-2xl">
+                <div className="grid grid-cols-12 px-10 py-6 bg-zinc-950/50 border-b border-zinc-800 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600 italic">
+                   <div className="col-span-1">POS</div>
+                   <div className="col-span-7 md:col-span-8">JUGADOR</div>
+                   <div className="col-span-4 md:col-span-3 text-right">PUNTAJE</div>
+                </div>
+
+                <div className="divide-y divide-zinc-800/20">
+                  {ranking.map((row, index) => (
+                    <div key={row.id} className={`grid grid-cols-12 px-10 py-8 items-center hover:bg-white/[0.02] transition-all group ${row.id === user?.id ? 'bg-orange-500/5' : ''}`}>
+                      <div className="col-span-1">
+                         {index === 0 && <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-black shadow-[0_0_20px_rgba(251,191,36,0.3)]"><Trophy size={16} /></div>}
+                         {index > 0 && <span className="text-zinc-600 font-black italic text-xl ml-1">#{index + 1}</span>}
+                      </div>
+                      <div className="col-span-7 md:col-span-8 flex items-center gap-6">
+                        <div className="w-14 h-14 rounded-2xl bg-zinc-950 border border-zinc-800 p-0.5 overflow-hidden flex items-center justify-center group-hover:border-orange-500/50 transition-colors shadow-2xl">
+                          {row.avatar_url ? (
+                            <img src={row.avatar_url} alt={row.username} referrerPolicy="no-referrer" className="w-full h-full object-cover rounded-xl" />
+                          ) : (
+                            <UserIcon size={24} className="text-zinc-800" />
+                          )}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-black text-white text-xl md:text-2xl uppercase italic tracking-tighter leading-none group-hover:text-orange-500 transition-colors">
+                            {row.username || 'Usuario Nuevo'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="col-span-4 md:col-span-3 text-right">
+                        <div className="inline-flex flex-col items-end">
+                          <span className="text-3xl md:text-4xl font-black text-white italic leading-none">{row.points}</span>
+                          <span className="text-[9px] text-orange-500 font-black uppercase tracking-[0.3em] mt-1">PUNTOS</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </section>
+
+      {/* Edit Profile Modal */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isUploading && setShowProfileModal(false)}
+              className="absolute inset-0 bg-black/90 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 shadow-2xl overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(249,115,22,0.1),transparent_70%)]" />
+              
+              <div className="relative z-10 space-y-6">
+                <div className="text-center space-y-1">
+                  <h3 className="text-3xl font-black text-white uppercase italic tracking-tighter">Editar Perfil</h3>
+                  <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest italic">Personaliza tu identidad</p>
+                </div>
+
+                <div className="flex flex-col items-center gap-5">
+                  <div className="relative group/avatar-modal">
+                    <div className="w-24 h-24 rounded-[2rem] bg-orange-500/5 border-2 border-dashed border-orange-500/20 flex items-center justify-center text-orange-500 font-black italic overflow-hidden shadow-2xl group-hover:border-orange-500/40 transition-all">
+                      {profile?.avatar_url ? (
+                        <img src={profile.avatar_url} alt="Avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="flex flex-col items-center gap-1 opacity-20">
+                          <UserIcon size={28} />
+                          <span className="text-[7px] font-black uppercase tracking-widest">SIN FOTO</span>
+                        </div>
+                      )}
+                      
+                      <label className="absolute inset-0 bg-black/60 opacity-0 group-hover/avatar-modal:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
+                        {isUploading ? (
+                          <Loader2 size={24} className="text-white animate-spin" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1">
+                             <Camera size={20} className="text-white" />
+                             <span className="text-[7px] font-bold text-white uppercase tracking-widest">CAMBIAR</span>
+                          </div>
+                        )}
+                        <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="w-full space-y-1.5">
+                    <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest italic ml-3">Nombre de Usuario</label>
+                    <input 
+                      type="text"
+                      placeholder="TU NOMBRE"
+                      value={usernameInput}
+                      onChange={(e) => setUsernameInput(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-4 text-xs font-black italic tracking-widest text-white uppercase outline-none focus:border-orange-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <button 
+                    onClick={handleUpdateUsername}
+                    disabled={isUploading || !usernameInput.trim()}
+                    className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-black font-black uppercase italic tracking-widest text-[10px] rounded-xl transition-all shadow-xl shadow-orange-500/20 disabled:opacity-50 active:scale-95"
+                  >
+                    GUARDAR CAMBIOS
+                  </button>
+                  <button 
+                    onClick={() => setShowProfileModal(false)}
+                    disabled={isUploading}
+                    className="w-full py-3 text-zinc-600 hover:text-zinc-400 font-black uppercase italic tracking-widest text-[9px] transition-colors"
+                  >
+                    CANCELAR
+                  </button>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => !isUploading && setShowProfileModal(false)}
+                className="absolute top-6 right-6 text-zinc-500 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

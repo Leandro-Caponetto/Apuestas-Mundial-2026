@@ -3,29 +3,44 @@ import { supabase } from '@/lib/supabase';
 import { Profile as ProfileType } from '@/types';
 import { User, LogOut, Shield, Award, Settings } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { Navigate } from 'react-router-dom';
+import { dbService } from '@/services/dbService';
 
 import { MOCK_USER } from '@/lib/mockData';
 
 export default function Profile() {
-  const [profile, setProfile] = useState<ProfileType | null>(MOCK_USER);
-  const [loading, setLoading] = useState(false);
+  const [profile, setProfile] = useState<ProfileType | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    // Mock user
-    setProfile(MOCK_USER);
-    setLoading(false);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
+        dbService.getProfile(session.user.id).then((p) => {
+          setProfile(p);
+          setLoading(false);
+        });
+      } else {
+        setLoading(false);
+      }
+    });
   }, []);
-
-  async function fetchProfile() {
-    // No-op
-  }
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    toast.success('Sesión cerrada');
+    window.location.href = '/auth';
   }
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) return <Navigate to="/auth" />;
 
   return (
     <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in duration-700">

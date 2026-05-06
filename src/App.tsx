@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Navbar } from '@/components/Navbar';
+import { Settings } from 'lucide-react';
 import Home from '@/pages/Home';
 import Leaderboard from '@/pages/Leaderboard';
 import Auth from '@/pages/Auth';
@@ -19,12 +20,56 @@ import { BettingZone } from '@/components/BettingZone';
 export default function App() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [missingKeys, setMissingKeys] = useState(false);
 
   useEffect(() => {
-    // Demo Mode: Simulate a session
-    setSession({ user: { id: 'u1', email: 'demo@example.com' } });
-    setLoading(false);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+      setMissingKeys(true);
+      setLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  if (missingKeys) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-zinc-900 border border-red-500/20 p-10 rounded-[3rem] text-center space-y-6 shadow-2xl relative overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(239,68,68,0.1),transparent_70%)]" />
+          <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto text-red-500 animate-pulse">
+            <Settings size={40} />
+          </div>
+          <div className="space-y-2 relative z-10">
+            <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter">Faltan Credenciales</h1>
+            <p className="text-zinc-500 text-sm font-bold uppercase italic tracking-widest leading-relaxed">
+              Ve a <span className="text-white">SETTINGS</span> y añade <br/>
+              <code className="text-red-400 block mt-2 text-[10px] bg-red-500/5 py-2 rounded-lg">VITE_SUPABASE_URL<br/>VITE_SUPABASE_ANON_KEY</code>
+            </p>
+          </div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full py-4 bg-white text-black font-black uppercase italic tracking-widest text-xs rounded-2xl hover:bg-zinc-200 transition-all relative z-10"
+          >
+            REINTENTAR CONEXIÓN
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

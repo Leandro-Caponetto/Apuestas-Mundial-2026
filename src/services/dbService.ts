@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Match, Team } from '../types';
+import { Match, Team, Profile } from '../types';
 
 export const dbService = {
   // Obtener equipos
@@ -85,6 +85,87 @@ export const dbService = {
     return () => {
       supabase.removeChannel(subscription);
     };
+  },
+
+  // Perfiles de Usuario
+  async getProfile(userId: string): Promise<Profile | null> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle(); // Use maybeSingle to avoid error if not found
+    
+    if (error) {
+      console.error('Error fetching profile:', error);
+      return null;
+    }
+
+    if (!data) {
+      // El perfil no existe todavía, lo creamos
+      const { data: newProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert([{ id: userId, points: 0 }])
+        .select()
+        .single();
+      
+      if (createError) {
+        console.error('Error creating profile:', createError);
+        return null;
+      }
+      return newProfile as Profile;
+    }
+    return data as Profile;
+  },
+
+  async updateProfile(userId: string, updates: Partial<Profile>) {
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId);
+    
+    if (error) {
+      console.error('Error updating profile:', error);
+      throw error;
+    }
+  },
+
+  async uploadAvatar(userId: string, file: File): Promise<{ url?: string; error?: string }> {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userId}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) {
+        return { error: uploadError.message };
+      }
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      return { url: data.publicUrl };
+    } catch (error: any) {
+      console.error('Avatar upload failed:', error);
+      return { error: error.message || 'Error de conexión' };
+    }
+  },
+
+  async getRanking(): Promise<Profile[]> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('points', { ascending: false })
+      .limit(20);
+    
+    if (error) {
+      console.error('Error fetching ranking:', error);
+      return [];
+    }
+    return data as Profile[];
   },
 
   // Inicialización (Seeding)
