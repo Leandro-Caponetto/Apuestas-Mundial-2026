@@ -535,7 +535,7 @@ export default function Home() {
           >
             <div className="absolute inset-0 bg-white/5 blur-[120px] rounded-full" />
             <img 
-              src='../../public/assets/logo.svg'
+              src={logo}
               className="w-full h-full object-contain relative z-10"
               alt="FIFA World Cup 2026 Official Logo"
               onError={(e) => {
