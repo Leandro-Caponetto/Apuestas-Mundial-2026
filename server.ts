@@ -158,11 +158,32 @@ app.post('/api/create-preference', async (req, res) => {
     const client = new MercadoPagoConfig({ accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN });
     const preference = new Preference(client);
 
-    const baseUrl = req.headers.referer || req.headers.origin || 'http://localhost:3000';
-    // Remove trailing slash if present
-    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    // Log incoming request for debugging
+    console.log('Creating MP preference for:', { amount, userId });
 
-    const result = await preference.create({
+    // Robust URL handling for the preview environment
+    let cleanBaseUrl = 'https://' + req.get('host'); // Use request host as a safer default
+    try {
+      const referer = req.headers.referer;
+      if (referer && referer !== 'null' && !referer.includes('localhost')) {
+        const url = new URL(referer);
+        cleanBaseUrl = `${url.protocol}//${url.host}`;
+      } else {
+         // Try to get from origin if referer is not useful
+         const origin = req.headers.origin;
+         if (origin && origin !== 'null' && !origin.includes('localhost')) {
+           const url = new URL(origin);
+           cleanBaseUrl = `${url.protocol}//${url.host}`;
+         }
+      }
+    } catch (e) {
+      console.warn('Could not parse referer/origin, using fallback:', e);
+    }
+
+    // Mercado Pago often requires HTTPS and formal domains for some features
+    console.log('Final URL for MP:', cleanBaseUrl);
+
+    const preferenceData = {
       body: {
         items: [
           {
@@ -174,19 +195,24 @@ app.post('/api/create-preference', async (req, res) => {
           }
         ],
         back_urls: {
-          success: `${cleanBaseUrl}/betting?payment=success`,
-          failure: `${cleanBaseUrl}/betting?payment=failure`,
-          pending: `${cleanBaseUrl}/betting?payment=pending`,
+          success: `${cleanBaseUrl}/betting`,
+          failure: `${cleanBaseUrl}/betting`,
+          pending: `${cleanBaseUrl}/betting`,
         },
-        auto_return: 'all', // Using 'all' instead of 'approved' can sometimes resolve issues with the property being invalid if failure is not defined correctly
-        notification_url: `${cleanBaseUrl}/api/mercadopago/webhook`,
+        auto_return: 'approved',
+        // notification_url: `${cleanBaseUrl}/api/mercadopago/webhook`, // Temporarily disable to check if it's the culprit
         metadata: {
           user_id: userId,
           amount: amount
         }
       }
-    });
+    };
 
+    console.log('Sending Preference Data:', JSON.stringify(preferenceData, null, 2));
+
+    const result = await preference.create(preferenceData);
+
+    console.log('MP Preference created successfully:', result.id);
     res.json({ id: result.id, init_point: result.init_point });
   } catch (error: any) {
     console.error('Error creating MP preference:', error);
