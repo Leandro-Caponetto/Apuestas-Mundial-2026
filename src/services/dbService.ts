@@ -105,7 +105,7 @@ export const dbService = {
       try {
         const { data: newProfile, error: createError } = await supabase
           .from('profiles')
-          .insert([{ id: userId, points: 0, username: 'JUGADOR NUEVO' }])
+          .insert([{ id: userId, points: 0, balance: 0, username: 'JUGADOR NUEVO' }])
           .select()
           .single();
         
@@ -122,6 +122,41 @@ export const dbService = {
     return data as Profile;
   },
 
+  async getAllProfiles(): Promise<Profile[]> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('points', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching profiles:', error);
+      return [];
+    }
+    return data as Profile[];
+  },
+
+  subscribeProfile(userId: string, callback: (profile: Profile) => void) {
+    this.getProfile(userId).then(p => { if (p) callback(p); });
+
+    const subscription = supabase
+      .channel(`public:profiles:id=eq.${userId}`)
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'profiles', 
+        filter: `id=eq.${userId}` 
+      }, (payload) => {
+        if (payload.new) {
+          callback(payload.new as Profile);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  },
+
   async updateProfile(userId: string, updates: Partial<Profile>) {
     const { error } = await supabase
       .from('profiles')
@@ -132,6 +167,28 @@ export const dbService = {
       console.error('Error updating profile:', error);
       throw error;
     }
+  },
+
+  async addCredits(userId: string, amount: number) {
+    const { data: profile, error: getError } = await supabase
+      .from('profiles')
+      .select('balance')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (getError) throw getError;
+
+    // Use amount directly if profile not found (shouldn't happen with getProfile call before)
+    const currentBalance = profile?.balance ?? 0;
+    const newBalance = currentBalance + amount;
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ balance: newBalance })
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+    return newBalance;
   },
 
   async uploadAvatar(userId: string, file: File): Promise<{ url?: string; error?: string }> {
@@ -171,6 +228,151 @@ export const dbService = {
       return [];
     }
     return data as Profile[];
+  },
+
+  // Predicciones
+  async getPredictions(userId: string) {
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('*')
+      .eq('user_id', userId);
+    
+    if (error) {
+      console.error('Error fetching predictions:', error);
+      return [];
+    }
+    return data;
+  },
+
+  async getAllPredictions() {
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching all predictions:', error);
+      return [];
+    }
+    return data;
+  },
+
+  async savePrediction(prediction: { user_id: string; match_id: string; home_score: number; away_score: number }) {
+    const { error } = await supabase
+      .from('predictions')
+      .upsert(prediction, { onConflict: 'user_id,match_id' });
+    
+    if (error) {
+      console.error('Error saving prediction:', error);
+      throw error;
+    }
+  },
+
+  subscribeAllPredictions(callback: (predictions: any[]) => void) {
+    this.getAllPredictions().then(callback);
+
+    const subscription = supabase
+      .channel('public:predictions')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'predictions' }, () => {
+        this.getAllPredictions().then(callback);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  },
+
+  // Apuestas (Bets)
+  async saveBet(bet: { user_id: string; items: any[]; amount: number; odds: number; potential_win: number }) {
+    const { data, error } = await supabase
+      .from('bets')
+      .insert([{
+        ...bet,
+        status: 'pending',
+        created_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error saving bet:', error);
+      throw error;
+    }
+    return data;
+  },
+
+  async getAllBets() {
+    const { data, error } = await supabase
+      .from('bets')
+      .select(`
+        *,
+        profiles (
+          username,
+          avatar_url
+        )
+      `)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching all bets:', error);
+      return [];
+    }
+    return data;
+  },
+
+  subscribeAllBets(callback: (bets: any[]) => void) {
+    this.getAllBets().then(callback);
+
+    const channelName = `bets-${Math.random().toString(36).substring(7)}`;
+    const subscription = supabase
+      .channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, () => {
+        this.getAllBets().then(callback);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  },
+
+  async deleteBet(betId: string) {
+    const { error } = await supabase
+      .from('bets')
+      .delete()
+      .eq('id', betId);
+    
+    if (error) {
+      console.error('Error deleting bet:', error);
+      throw error;
+    }
+  },
+
+  // Atomic Betting (Recommended)
+  async placeBetAtomic(bet: { user_id: string; items: any[]; amount: number; odds: number; potential_win: number }) {
+    const { data, error } = await supabase.rpc('place_bet_atomic', {
+      p_user_id: bet.user_id,
+      p_items: bet.items,
+      p_amount: bet.amount,
+      p_odds: bet.odds,
+      p_potential_win: bet.potential_win
+    });
+
+    if (error) {
+      console.error('Error in atomic bet:', error);
+      throw error;
+    }
+    return data;
+  },
+
+  async resetBalance(userId: string, amount: number = 50000) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ balance: amount })
+      .eq('id', userId);
+    
+    if (error) throw error;
+    return amount;
   },
 
   // Inicialización (Seeding)

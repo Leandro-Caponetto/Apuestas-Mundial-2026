@@ -101,13 +101,14 @@ export const MOCK_USER: Profile = {
   username: 'demo_user',
   full_name: 'Usuario Demo',
   avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-  points: 15
+  points: 15,
+  balance: 1000
 };
 
 export const MOCK_LEADERBOARD: Profile[] = [
-  { id: 'u1', username: 'demo_user', full_name: 'Usuario Demo', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix', points: 151 },
-  { id: 'u2', username: 'messi10', full_name: 'Lionel Messi', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lionel', points: 120 },
-  { id: 'u3', username: 'cr7', full_name: 'Cristiano Ronaldo', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Cristiano', points: 115 },
-  { id: 'u4', username: 'mbappe', full_name: 'Kylian Mbappé', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kylian', points: 98 },
-  { id: 'u5', username: 'neymar', full_name: 'Neymar Jr', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Neymar', points: 85 },
+  { id: 'u1', username: 'demo_user', full_name: 'Usuario Demo', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix', points: 151, balance: 1000 },
+  { id: 'u2', username: 'messi10', full_name: 'Lionel Messi', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lionel', points: 120, balance: 5000 },
+  { id: 'u3', username: 'cr7', full_name: 'Cristiano Ronaldo', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Cristiano', points: 115, balance: 4500 },
+  { id: 'u4', username: 'mbappe', full_name: 'Kylian Mbappé', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kylian', points: 98, balance: 3000 },
+  { id: 'u5', username: 'neymar', full_name: 'Neymar Jr', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Neymar', points: 85, balance: 2500 },
 ];

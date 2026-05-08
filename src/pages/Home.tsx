@@ -18,11 +18,10 @@ import { toast } from 'react-hot-toast';
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
 // Logo oficial con la copa (26 con el trofeo)
-import logo from '../../public/assets/logo.svg';
-
+const logo = 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Logo_de_la_Copa_Mundial_de_F%C3%BAtbol_2026.svg';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<Tab>('partidos');
+  const [activeTab, setActiveTab] = useState<Tab>('grupos');
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
@@ -405,9 +404,9 @@ export default function Home() {
               </Link>
 
               {user ? (
-                <div className="flex flex-wrap items-center gap-4 p-2 pr-6 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-full shadow-2xl relative overflow-hidden group">
+                <div className="flex flex-wrap items-center gap-4 p-1.5 pr-5 bg-zinc-900/40 backdrop-blur-2xl border border-zinc-800/50 rounded-full shadow-2xl relative overflow-hidden group hover:border-orange-500/30 transition-all">
                    <div 
-                    className="relative w-12 h-12 rounded-full border-2 border-orange-500/20 overflow-hidden flex items-center justify-center bg-zinc-950 cursor-pointer hover:border-orange-500 transition-all"
+                    className="relative w-10 h-10 rounded-full border border-white/10 overflow-hidden flex items-center justify-center bg-zinc-950 cursor-pointer hover:scale-105 transition-transform"
                     onClick={() => {
                       setUsernameInput(profile?.username || '');
                       setShowProfileModal(true);
@@ -416,34 +415,36 @@ export default function Home() {
                      {profile?.avatar_url ? (
                         <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                      ) : (
-                        <span className="text-orange-500 font-black italic">{user.email?.[0].toUpperCase()}</span>
+                        <span className="text-orange-500 font-black italic text-xs">{user.email?.[0].toUpperCase()}</span>
                      )}
                    </div>
 
                    <div className="flex flex-col">
                       <div className="flex items-center gap-2">
-                        <span className="text-white font-black italic text-sm uppercase tracking-tighter">
+                        <span className="text-white font-black italic text-xs uppercase tracking-tighter">
                           {profile?.username || user.email.split('@')[0]}
                         </span>
                         {isAdmin && (
-                          <span className="text-[7px] font-black text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20">ADMIN</span>
+                          <span className="text-[6px] font-black text-emerald-400 bg-emerald-400/20 px-2 py-0.5 rounded-full border border-emerald-400/30 shadow-[0_0_15px_rgba(52,211,153,0.3)] animate-pulse">
+                            ADMINISTRADOR
+                          </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 text-[9px] font-bold">
-                        <span className="text-zinc-500 uppercase tracking-widest">{profile?.points || 0} PTS</span>
-                        <div className="w-1 h-1 rounded-full bg-zinc-800" />
-                        <span className="text-orange-500 uppercase tracking-widest">RANKING #{ranking.findIndex(r => r.id === user.id) + 1 || '--'}</span>
+                      <div className="flex items-center gap-2 text-[8px] font-bold">
+                        <span className="text-zinc-500 uppercase tracking-widest leading-none">{profile?.points || 0} PUNTOS</span>
+                        <div className="w-0.5 h-0.5 rounded-full bg-zinc-700" />
+                        <span className="text-orange-500 uppercase tracking-widest leading-none">RANK #{ranking.findIndex(r => r.id === user.id) + 1 || '--'}</span>
                       </div>
                    </div>
 
-                   <div className="flex items-center gap-1 border-l border-white/5 pl-4">
+                   <div className="flex items-center gap-1 border-l border-white/5 pl-3">
                       {isAdmin && (
-                        <button onClick={handleSeed} title="DB Seed" className="p-2 text-zinc-500 hover:text-white transition-colors">
-                          <Database size={14} />
+                        <button onClick={handleSeed} title="Configuración BD" className="p-1.5 text-zinc-600 hover:text-white transition-colors">
+                          <Database size={12} />
                         </button>
                       )}
-                      <button onClick={handleSignOut} title="Cerrar Sesión" className="p-2 text-zinc-500 hover:text-red-500 transition-colors">
-                        <LogOut size={14} />
+                      <button onClick={handleSignOut} title="Cerrar Sesión" className="p-1.5 text-zinc-600 hover:text-red-500 transition-colors">
+                        <LogOut size={12} />
                       </button>
                    </div>
                 </div>
@@ -533,32 +534,32 @@ export default function Home() {
             className="relative w-full md:w-[450px] aspect-square flex items-center justify-center pt-8 md:pt-0"
           >
             <div className="absolute inset-0 bg-white/5 blur-[120px] rounded-full" />
-                 <img 
-  src='../../public/assets/logo.svg'
-  className="w-full h-full object-contain relative z-10"
-  alt="FIFA World Cup 2026 Official Logo"
-  onError={(e) => {
-    const target = e.target as HTMLImageElement;
-    target.style.display = 'none';
+            <img 
+              src='../../public/assets/logo.svg'
+              className="w-full h-full object-contain relative z-10"
+              alt="FIFA World Cup 2026 Official Logo"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
 
-    const parent = target.parentElement;
-    if (parent && !parent.querySelector('.fallback-msg')) {
-      const fallback = document.createElement('div');
-      fallback.className = 'fallback-msg absolute inset-0 flex flex-col items-center justify-center text-center z-10';
+                const parent = target.parentElement;
+                if (parent && !parent.querySelector('.fallback-msg')) {
+                  const fallback = document.createElement('div');
+                  fallback.className = 'fallback-msg absolute inset-0 flex flex-col items-center justify-center text-center z-10';
 
-      fallback.innerHTML = `
-        <span class="text-8xl md:text-9xl font-black text-white italic tracking-tighter leading-none select-none">
-          20<span class="text-orange-500">26</span>
-        </span>
-        <span class="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-white/20 mt-6 italic border-t border-white/5 pt-4">
-          Copa del Mundo
-        </span>
-      `;
+                  fallback.innerHTML = `
+                    <span class="text-8xl md:text-9xl font-black text-white italic tracking-tighter leading-none select-none">
+                      20<span class="text-orange-500">26</span>
+                    </span>
+                    <span class="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-white/20 mt-6 italic border-t border-white/5 pt-4">
+                      Copa del Mundo
+                    </span>
+                  `;
 
-      parent.appendChild(fallback);
-    }
-  }}
-/>
+                  parent.appendChild(fallback);
+                }
+              }}
+            />
           </motion.div>
         </div>
       </header>

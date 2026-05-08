@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Match, Prediction } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { dbService } from '@/services/dbService';
 import { formatDate } from '@/lib/utils';
 import { motion } from 'motion/react';
 import { ShieldCheck, Calendar, AlertCircle } from 'lucide-react';
@@ -16,52 +17,70 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match }) => {
   const [awayScore, setAwayScore] = useState<string>('');
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [saving, setSaving] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const isLive = match.status === 'playing';
   const isFinished = match.status === 'finished';
   const isLocked = new Date(match.start_at) < new Date() || isFinished;
 
   useEffect(() => {
-    fetchPrediction();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUserId(session.user.id);
+        fetchPrediction(session.user.id);
+      }
+    });
   }, [match.id]);
 
-  async function fetchPrediction() {
-    // Simulation: check if we have it in local state or just mock
-    if (match.id === 'm3') {
-      setPrediction({
-        id: 'p1',
-        user_id: 'u1',
-        match_id: 'm3',
-        home_score: 2,
-        away_score: 1,
-        points_earned: 3,
-        created_at: new Date().toISOString()
-      });
-      setHomeScore('2');
-      setAwayScore('1');
+  async function fetchPrediction(uid: string) {
+    try {
+      const preds = await dbService.getPredictions(uid);
+      const myPred = (preds as any[]).find(p => p.match_id === match.id);
+      if (myPred) {
+        setPrediction(myPred);
+        setHomeScore(myPred.home_score.toString());
+        setAwayScore(myPred.away_score.toString());
+      }
+    } catch (err) {
+      console.error('Error fetching prediction:', err);
     }
   }
 
   async function savePrediction() {
+    if (!userId) {
+      toast.error('Debes iniciar sesión');
+      return;
+    }
+
     if (homeScore === '' || awayScore === '') {
       toast.error('Ingresa ambos resultados');
       return;
     }
 
     setSaving(true);
-    setTimeout(() => {
-      toast.success('Predicción guardada (Modo Demo) ⚽');
+    try {
+      await dbService.savePrediction({
+        user_id: userId,
+        match_id: match.id,
+        home_score: parseInt(homeScore),
+        away_score: parseInt(awayScore)
+      });
+      
+      toast.success('Predicción guardada ⚽');
       setPrediction({
         id: 'temp',
-        user_id: 'u1',
+        user_id: userId,
         match_id: match.id,
         home_score: parseInt(homeScore),
         away_score: parseInt(awayScore),
-        points_earned: 0,
+        points_earned: prediction?.points_earned || 0,
         created_at: new Date().toISOString()
       });
+    } catch (err: any) {
+      toast.error('Error al guardar: ' + (err.message || 'Error desconocido'));
+    } finally {
       setSaving(false);
-    }, 1000);
+    }
   }
 
   return (

@@ -6,11 +6,17 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString('es-ES', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Fecha pendiente';
+    return date.toLocaleDateString('es-ES', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch (e) {
+    return 'Fecha pendiente';
+  }
 }
