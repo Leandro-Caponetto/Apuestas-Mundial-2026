@@ -15,10 +15,12 @@ import { supabase } from '@/lib/supabase';
 import { dbService } from '@/services/dbService';
 import { toast } from 'react-hot-toast';
 
+import logo from '../../public/assets/logo.svg';
+
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
 // Logo oficial con la copa (26 con el trofeo)
-const logo = 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Logo_de_la_Copa_Mundial_de_F%C3%BAtbol_2026.svg';
+
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('grupos');
