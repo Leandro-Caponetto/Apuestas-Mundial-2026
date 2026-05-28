@@ -380,6 +380,27 @@ export const dbService = {
     try {
       console.log('Starting seed process...');
       
+      // 0. Clean up any team in DB that is not in the WORLD_CUP_TEAMS list (like Chile 'CHI')
+      const codes = teams.map(t => t.code);
+      const { data: dbTeams } = await supabase.from('teams').select('id, code');
+      if (dbTeams) {
+        const teamsToDelete = dbTeams.filter(t => !t.code || !codes.includes(t.code));
+        for (const team of teamsToDelete) {
+          console.log(`Cleaning up retired team code from database: ${team.code}`);
+          const { data: associatedMatches } = await supabase
+            .from('matches')
+            .select('id')
+            .or(`home_team_id.eq.${team.id},away_team_id.eq.${team.id}`);
+          if (associatedMatches && associatedMatches.length > 0) {
+            const matchIds = associatedMatches.map(m => m.id);
+            await supabase.from('predictions').delete().in('match_id', matchIds);
+            await supabase.from('matches').delete().in('id', matchIds);
+          }
+          await supabase.from('teams').delete().eq('id', team.id);
+          console.log(`Successfully deleted retired team: ${team.code}`);
+        }
+      }
+      
       // 1. Insert teams
       // We'll insert and then fetch to get the real UUIDs
       const teamsToInsert = teams.map(({ name, code, flag_url, group_name }) => ({
@@ -395,17 +416,29 @@ export const dbService = {
         .select();
 
       if (teamsError) throw teamsError;
-      console.log('Teams seeded:', insertedTeams?.length);
+      console.log('Teams seeded/updated:', insertedTeams?.length);
 
-      // 2. Map matches to real team UUIDs
+      // 2. Map matches to real team UUIDs without duplicating
       if (insertedTeams) {
         const teamMap = new Map(insertedTeams.map(t => [t.code, t.id]));
         
-        const matchesToInsert = matches.map(m => {
+        const matchesToInsert = [];
+        for (const m of matches) {
           const homeId = teamMap.get(m.homeTeam?.code || '');
           const awayId = teamMap.get(m.awayTeam?.code || '');
           
-          return {
+          if (!homeId || !awayId) continue;
+
+          // Check if match already exists by teams and start date
+          const { data: existing } = await supabase
+            .from('matches')
+            .select('id')
+            .eq('home_team_id', homeId)
+            .eq('away_team_id', awayId)
+            .eq('start_at', m.start_at || '')
+            .maybeSingle();
+
+          const matchData = {
             home_team_id: homeId,
             away_team_id: awayId,
             start_at: m.start_at || new Date().toISOString(),
@@ -415,13 +448,21 @@ export const dbService = {
             status: m.status,
             group_name: m.group_name
           };
-        });
 
-        const { error: matchesError } = await supabase
-          .from('matches')
-          .insert(matchesToInsert);
+          if (existing) {
+            await supabase.from('matches').update(matchData).eq('id', existing.id);
+          } else {
+            matchesToInsert.push(matchData);
+          }
+        }
 
-        if (matchesError) console.warn('Possible error seeding matches (could be already there):', matchesError);
+        if (matchesToInsert.length > 0) {
+          const { error: matchesError } = await supabase
+            .from('matches')
+            .insert(matchesToInsert);
+          if (matchesError) console.warn('Error inserting new matches:', matchesError);
+        }
+        console.log('Matches processed successfully');
       }
 
       // 3. Seed Bracket
@@ -433,5 +474,136 @@ export const dbService = {
       console.error('Seed error:', e);
       throw e;
     }
+  },
+
+  // Ligas
+  async getLeagues(userId: string) {
+    const { data, error } = await supabase
+      .from('leagues')
+      .select(`
+        *,
+        league_members!inner(user_id)
+      `)
+      .eq('league_members.user_id', userId);
+    
+    if (error) {
+      console.error('Error fetching leagues:', error);
+      return [];
+    }
+
+    // Para cada liga, obtener el conteo de miembros (Supabase counts are better via RPC or separate query if needed)
+    // Pero por ahora, vamos a traer las ligas y luego sus miembros si es necesario.
+    const leaguesWithCount = await Promise.all((data as any[]).map(async (league) => {
+      const { count } = await supabase
+        .from('league_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('league_id', league.id);
+      
+      return { ...league, members: count || 0 };
+    }));
+
+    return leaguesWithCount;
+  },
+
+  async createLeague(userId: string, name: string) {
+    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    const { data: league, error: leagueError } = await supabase
+      .from('leagues')
+      .insert([{ name, created_by: userId, invite_code: inviteCode }])
+      .select()
+      .single();
+    
+    if (leagueError) {
+      console.error('Error creating league:', leagueError);
+      throw leagueError;
+    }
+
+    const { error: memberError } = await supabase
+      .from('league_members')
+      .insert([{ league_id: league.id, user_id: userId }]);
+    
+    if (memberError) {
+      console.error('Error adding creator to league:', memberError);
+      throw memberError;
+    }
+
+    return league;
+  },
+
+  async joinLeague(userId: string, inviteCode: string) {
+    // 1. Encontrar la liga por el código
+    const { data: league, error: leagueError } = await supabase
+      .from('leagues')
+      .select('*')
+      .eq('invite_code', inviteCode.toUpperCase())
+      .single();
+    
+    if (leagueError || !league) {
+      throw new Error('Código de invitación inválido');
+    }
+
+    // 2. Unirse
+    const { error: memberError } = await supabase
+      .from('league_members')
+      .insert([{ league_id: league.id, user_id: userId }]);
+    
+    if (memberError) {
+      if (memberError.code === '23505') { // Unique violation
+        throw new Error('Ya eres miembro de esta liga');
+      }
+      console.error('Error joining league:', memberError);
+      throw memberError;
+    }
+
+    return league;
+  },
+
+  async getLeagueMembers(leagueId: string) {
+    const { data, error } = await supabase
+      .from('league_members')
+      .select(`
+        user_id,
+        profiles(*)
+      `)
+      .eq('league_id', leagueId);
+    
+    if (error) {
+      console.error('Error fetching league members:', error);
+      return [];
+    }
+    
+    return data.map(m => m.profiles);
+  },
+
+  async getLeagueRanking(leagueId: string): Promise<Profile[]> {
+    const { data, error } = await supabase
+      .from('league_members')
+      .select(`
+        user_id,
+        profiles(*)
+      `)
+      .eq('league_id', leagueId);
+    
+    if (error) {
+      console.error('Error fetching league ranking:', error);
+      return [];
+    }
+
+    const profiles = data.map(m => m.profiles as unknown as Profile);
+    return profiles.sort((a, b) => (b.points || 0) - (a.points || 0));
+  },
+
+  async deleteLeague(leagueId: string) {
+    const { error } = await supabase
+      .from('leagues')
+      .delete()
+      .eq('id', leagueId);
+    
+    if (error) {
+      console.error('Error deleting league:', error);
+      throw error;
+    }
+    return true;
   }
 };

@@ -149,9 +149,27 @@ DROP POLICY IF EXISTS "Users can update own predictions" ON predictions;
 CREATE POLICY "Users can update own predictions" ON predictions FOR UPDATE USING (auth.uid() = user_id);
 
 ALTER TABLE leagues ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Leagues viewable by members" ON leagues;
-CREATE POLICY "Leagues viewable by members" ON leagues FOR SELECT USING (
-  EXISTS (SELECT 1 FROM league_members WHERE league_id = leagues.id AND user_id = auth.uid())
+DROP POLICY IF EXISTS "Leagues viewable by authenticated users" ON leagues;
+CREATE POLICY "Leagues viewable by authenticated users" ON leagues FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Users can create leagues" ON leagues;
+CREATE POLICY "Users can create leagues" ON leagues FOR INSERT WITH CHECK (auth.uid() = created_by);
+
+DROP POLICY IF EXISTS "Users can delete own leagues" ON leagues;
+CREATE POLICY "Users can delete own leagues" ON leagues FOR DELETE USING (auth.uid() = created_by);
+
+ALTER TABLE league_members ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Members viewable by league members" ON league_members;
+CREATE POLICY "Members viewable by league members" ON league_members FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Users can join leagues" ON league_members;
+CREATE POLICY "Users can join leagues" ON league_members FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "League members can be deleted by owner or self" ON league_members;
+CREATE POLICY "League members can be deleted by owner or self" ON league_members 
+FOR DELETE USING (
+  auth.uid() = user_id OR 
+  EXISTS (SELECT 1 FROM leagues WHERE id = league_id AND created_by = auth.uid())
 );
 
 -- Functions

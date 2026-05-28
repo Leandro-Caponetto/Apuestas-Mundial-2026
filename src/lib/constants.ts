@@ -47,7 +47,7 @@ export const WORLD_CUP_TEAMS: Team[] = [
   { id: 'aut', name: 'Austria', code: 'AUT', flag_url: 'https://flagcdn.com/w160/at.png', group_name: 'I' },
   { id: 'per', name: 'Perú', code: 'PER', flag_url: 'https://flagcdn.com/w160/pe.png', group_name: 'I' },
   // Group J
-  { id: 'chi', name: 'Chile', code: 'CHI', flag_url: 'https://flagcdn.com/w160/cl.png', group_name: 'J' },
+  { id: 'pan', name: 'Panamá', code: 'PAN', flag_url: 'https://flagcdn.com/w160/pa.png', group_name: 'J' },
   { id: 'swe', name: 'Suecia', code: 'SWE', flag_url: 'https://flagcdn.com/w160/se.png', group_name: 'J' },
   { id: 'ukr', name: 'Ucrania', code: 'UKR', flag_url: 'https://flagcdn.com/w160/ua.png', group_name: 'J' },
   { id: 'civ', name: 'C. Marfil', code: 'CIV', flag_url: 'https://flagcdn.com/w160/ci.png', group_name: 'J' },

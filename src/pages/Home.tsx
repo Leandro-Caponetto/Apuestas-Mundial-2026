@@ -14,13 +14,11 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { dbService } from '@/services/dbService';
 import { toast } from 'react-hot-toast';
-
 import logo from '../../public/assets/logo.svg';
 
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
 // Logo oficial con la copa (26 con el trofeo)
-
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('grupos');
@@ -34,14 +32,24 @@ export default function Home() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   // Bracket State
   const [bracketRounds, setBracketRounds] = useState<any[]>([]);
+  const isMountedRef = React.useRef(true);
+
+  // Keep track of mounting lifecycle
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const loadProfile = async (userId: string) => {
     try {
       const prof = await dbService.getProfile(userId);
-      if (prof) setProfile(prof);
+      if (prof && isMountedRef.current) setProfile(prof);
     } catch (err) {
       console.error('Error loading profile:', err);
     }
@@ -50,15 +58,30 @@ export default function Home() {
   const loadRanking = async () => {
     try {
       const data = await dbService.getRanking();
-      setRanking(data);
+      if (data && isMountedRef.current) setRanking(data);
     } catch (err) {
       console.error('Error loading ranking:', err);
     }
   };
 
   useEffect(() => {
+    // Automatically cleanup retired teams and matches in background
+    try {
+      fetch('/api/admin/clean-retired', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-url': import.meta.env.VITE_SUPABASE_URL || '',
+          'x-supabase-key': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        }
+      }).catch(err => console.error('Silent cleanup failed:', err));
+    } catch (e) {
+      console.error('Trigger cleanup error:', e);
+    }
+
     // Auth Session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMountedRef.current) return;
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) loadProfile(currentUser.id);
@@ -66,6 +89,7 @@ export default function Home() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMountedRef.current) return;
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) loadProfile(currentUser.id);
@@ -76,10 +100,11 @@ export default function Home() {
 
     // Data Subscriptions
     const unsubscribeBracket = dbService.subscribeBracket((rounds) => {
-      if (rounds) setBracketRounds(rounds);
+      if (isMountedRef.current && rounds) setBracketRounds(rounds);
     });
 
     const unsubscribeMatches = dbService.subscribeMatches((newMatches) => {
+      if (!isMountedRef.current) return;
       if (newMatches && newMatches.length > 0) {
         setMatches(newMatches);
         setLoading(false);
@@ -90,9 +115,15 @@ export default function Home() {
     });
 
     return () => {
-      subscription.unsubscribe();
-      unsubscribeBracket();
-      unsubscribeMatches();
+      if (subscription && typeof subscription.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
+      if (typeof unsubscribeBracket === 'function') {
+        unsubscribeBracket();
+      }
+      if (typeof unsubscribeMatches === 'function') {
+        unsubscribeMatches();
+      }
     };
   }, []);
 
@@ -339,10 +370,10 @@ export default function Home() {
 
     try {
       await dbService.seedInitialData(WORLD_CUP_TEAMS, MOCK_MATCHES, initialBracket);
-      alert('¡Base de datos inicializada correctamente! Refresca la página si no ves los cambios.');
-      window.location.reload();
-    } catch (err) {
-      alert('Error al inicializar: Asegúrate de haber ejecutado el SQL en Supabase y tener permisos.');
+      toast.success('¡Base de datos inicializada correctamente!');
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (err: any) {
+      toast.error('Error al inicializar: ' + (err.message || 'Intente nuevamente'));
       console.error(err);
     }
   };
@@ -417,14 +448,14 @@ export default function Home() {
                      {profile?.avatar_url ? (
                         <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                      ) : (
-                        <span className="text-orange-500 font-black italic text-xs">{user.email?.[0].toUpperCase()}</span>
+                        <span className="text-orange-500 font-black italic text-xs">{(user?.email?.[0] || 'U').toUpperCase()}</span>
                      )}
                    </div>
 
                    <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                         <span className="text-white font-black italic text-xs uppercase tracking-tighter">
-                          {profile?.username || user.email.split('@')[0]}
+                          {profile?.username || user?.email?.split('@')[0] || 'Invitado'}
                         </span>
                         {isAdmin && (
                           <span className="text-[6px] font-black text-emerald-400 bg-emerald-400/20 px-2 py-0.5 rounded-full border border-emerald-400/30 shadow-[0_0_15px_rgba(52,211,153,0.3)] animate-pulse">
@@ -435,7 +466,12 @@ export default function Home() {
                       <div className="flex items-center gap-2 text-[8px] font-bold">
                         <span className="text-zinc-500 uppercase tracking-widest leading-none">{profile?.points || 0} PUNTOS</span>
                         <div className="w-0.5 h-0.5 rounded-full bg-zinc-700" />
-                        <span className="text-orange-500 uppercase tracking-widest leading-none">RANK #{ranking.findIndex(r => r.id === user.id) + 1 || '--'}</span>
+                        <span className="text-orange-500 uppercase tracking-widest leading-none">
+                          RANK #{(() => {
+                            const userRankIndex = ranking && user ? ranking.filter(Boolean).findIndex(r => r && r.id === user.id) : -1;
+                            return userRankIndex !== undefined && userRankIndex !== -1 ? userRankIndex + 1 : '--';
+                          })()}
+                        </span>
                       </div>
                    </div>
 
@@ -536,32 +572,23 @@ export default function Home() {
             className="relative w-full md:w-[450px] aspect-square flex items-center justify-center pt-8 md:pt-0"
           >
             <div className="absolute inset-0 bg-white/5 blur-[120px] rounded-full" />
-            <img 
-              src={logo}
-              className="w-full h-full object-contain relative z-10"
-              alt="FIFA World Cup 2026 Official Logo"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-
-                const parent = target.parentElement;
-                if (parent && !parent.querySelector('.fallback-msg')) {
-                  const fallback = document.createElement('div');
-                  fallback.className = 'fallback-msg absolute inset-0 flex flex-col items-center justify-center text-center z-10';
-
-                  fallback.innerHTML = `
-                    <span class="text-8xl md:text-9xl font-black text-white italic tracking-tighter leading-none select-none">
-                      20<span class="text-orange-500">26</span>
-                    </span>
-                    <span class="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-white/20 mt-6 italic border-t border-white/5 pt-4">
-                      Copa del Mundo
-                    </span>
-                  `;
-
-                  parent.appendChild(fallback);
-                }
-              }}
-            />
+            {!logoError ? (
+              <img 
+                src={logo}
+                className="w-full h-full object-contain relative z-10"
+                alt="FIFA World Cup 2026 Official Logo"
+                onError={() => setLogoError(true)}
+              />
+            ) : (
+              <div className="fallback-msg absolute inset-0 flex flex-col items-center justify-center text-center z-10">
+                <span className="text-8xl md:text-9xl font-black text-white italic tracking-tighter leading-none select-none">
+                  20<span class="text-orange-500">26</span>
+                </span>
+                <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-white/20 mt-6 italic border-t border-white/5 pt-4">
+                  Copa del Mundo
+                </span>
+              </div>
+            )}
           </motion.div>
         </div>
       </header>
@@ -781,9 +808,11 @@ export default function Home() {
                 </div>
 
                 <div className="divide-y divide-zinc-800/20">
-                  {ranking.map((row, index) => (
-                    <div key={row.id} className={`grid grid-cols-12 px-10 py-8 items-center hover:bg-white/[0.02] transition-all group ${row.id === user?.id ? 'bg-orange-500/5' : ''}`}>
-                      <div className="col-span-1">
+                  {ranking && ranking.filter(Boolean).map((row, index) => {
+                    if (!row || !row.id) return null;
+                    return (
+                      <div key={row.id} className={`grid grid-cols-12 px-10 py-8 items-center hover:bg-white/[0.02] transition-all group ${row.id === user?.id ? 'bg-orange-500/5' : ''}`}>
+                        <div className="col-span-1">
                          {index === 0 && <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-black shadow-[0_0_20px_rgba(251,191,36,0.3)]"><Trophy size={16} /></div>}
                          {index > 0 && <span className="text-zinc-600 font-black italic text-xl ml-1">#{index + 1}</span>}
                       </div>
@@ -808,7 +837,8 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </motion.div>

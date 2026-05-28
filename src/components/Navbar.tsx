@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { Trophy, Home, User as UserIcon, Settings, LogOut, LayoutDashboard, ListOrdered, DollarSign } from 'lucide-react';
+import { Trophy, Home, User as UserIcon, Settings, LogOut, LayoutDashboard, ListOrdered, CheckSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Profile } from '@/types';
 import { dbService } from '@/services/dbService';
@@ -53,7 +53,7 @@ export function Navbar() {
 
   const navItems = [
     { name: 'Inicio', href: '/', icon: Home },
-    { name: 'Apuestas', href: '/betting', icon: DollarSign },
+    { name: 'PRODE', href: '/betting', icon: CheckSquare },
     { name: 'Ranking', href: '/leaderboard', icon: ListOrdered },
     { name: 'Liga', href: '/leagues', icon: Trophy },
   ];
@@ -86,7 +86,7 @@ export function Navbar() {
           >
             <div className="w-10 h-10 rounded-full bg-zinc-900 border-2 border-orange-500/0 group-hover:border-orange-500/50 overflow-hidden flex items-center justify-center transition-all">
               {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                <img src={profile.avatar_url} alt="Profile" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
               ) : (
                 <UserIcon size={18} className="text-zinc-500" />
               )}

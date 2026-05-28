@@ -8,6 +8,11 @@ import { ShieldCheck, Calendar, AlertCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 
+const cleanGroupName = (group: string | null | undefined): string => {
+  if (!group) return '';
+  return group.replace(/^(grupo\s+|group\s+|grupo|group|group_)/i, '').trim().toUpperCase();
+};
+
 interface MatchCardProps {
   match: Match;
 }
@@ -104,7 +109,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match }) => {
       <div className="flex justify-between items-center mb-6">
         <div className="flex flex-col">
           <span className="text-[10px] uppercase tracking-[0.2em] font-black text-zinc-500 italic">
-            {match.phase === 'group' ? `Grupo ${match.group_name}` : match.phase}
+            {match.phase === 'group' ? `Grupo ${cleanGroupName(match.group_name)}` : match.phase}
           </span>
           <span className="text-[10px] font-bold text-orange-500/80">{formatDate(match.start_at)}</span>
         </div>

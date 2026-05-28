@@ -8,10 +8,11 @@ interface PredictionCenterProps {
   matches: Match[];
 }
 
-export const PredictionCenter: React.FC<PredictionCenterProps> = ({ matches }) => {
+export const PredictionCenter: React.FC<PredictionCenterProps> = ({ matches = [] }) => {
   const [filter, setFilter] = useState<'all' | 'pending' | 'finished'>('all');
 
-  const filteredMatches = matches.filter(m => {
+  const filteredMatches = (matches || []).filter(m => {
+    if (!m) return false;
     if (filter === 'all') return true;
     return m.status === filter;
   });

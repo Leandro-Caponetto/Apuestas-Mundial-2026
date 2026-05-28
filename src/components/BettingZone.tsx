@@ -1,181 +1,273 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Trophy, 
-  TrendingUp, 
-  Wallet, 
   Clock, 
+  Save, 
+  Search, 
+  Award, 
+  CheckCircle2, 
   ChevronRight, 
-  Download, 
-  Trash2, 
-  DollarSign, 
-  ChevronLeft,
-  ArrowRightLeft,
-  LayoutDashboard,
-  ListOrdered,
-  Search,
-  MapPin,
+  Info,
   Calendar as CalendarIcon,
-  Filter,
-  CheckCircle2,
-  PlusCircle,
-  X
+  HelpCircle,
+  Plus,
+  Minus,
+  Lock,
+  Loader2,
+  Users
 } from 'lucide-react';
-import { WORLD_CUP_TEAMS } from '../lib/constants';
-import { TournamentBracket } from './TournamentBracket';
-import { CommunityBoard } from './CommunityBoard';
-import { formatDate } from '@/lib/utils';
 import { dbService } from '@/services/dbService';
-import { Match, Profile } from '@/types';
+import { Match, Profile, Prediction } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'react-hot-toast';
+import { formatDate } from '@/lib/utils';
+import { CommunityBoard } from './CommunityBoard';
+import { WORLD_CUP_TEAMS } from '@/lib/constants';
+import { MOCK_MATCHES } from '@/lib/mockData';
+import { ResolveMatchModal } from './ResolveMatchModal';
 
-interface BetOption {
-  id: string;
-  matchId: string;
-  matchTeams: string;
-  selection: string;
-  odds: number;
-}
-
-interface MatchBetting {
-  id: string;
-  home: typeof WORLD_CUP_TEAMS[0];
-  away: typeof WORLD_CUP_TEAMS[0];
-  date: string;
-  time: string;
-  venue: string;
-  city: string;
-  round: string;
-  odds: {
-    home: number;
-    draw: number;
-    away: number;
-  };
-}
-
-const CITIES = ['New York/NJ', 'Dallas', 'Kansas City', 'Houston', 'Atlanta', 'Los Angeles', 'Philadelphia', 'Seattle', 'San Francisco', 'Boston', 'Miami', 'Mexico City', 'Monterrey', 'Guadalajara', 'Vancouver', 'Toronto'];
-const STADIUMS = ['MetLife Stadium', 'AT&T Stadium', 'Arrowhead Stadium', 'NRG Stadium', 'Mercedes-Benz Stadium', 'SoFi Stadium', 'Lincoln Financial Field', 'Lumen Field', 'Levi\'s Stadium', 'Gillette Stadium', 'Hard Rock Stadium', 'Estadio Azteca', 'Estadio BBVA', 'Estadio Akron', 'BC Place', 'BMO Field'];
+const cleanGroupName = (group: string | null | undefined): string => {
+  if (!group) return '';
+  return group.replace(/^(grupo\s+|group\s+|grupo|group|group_)/i, '').trim().toUpperCase();
+};
 
 export const BettingZone: React.FC = () => {
-  const [balance, setBalance] = useState(0);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [betSlip, setBetSlip] = useState<BetOption[]>([]);
-  const [betAmount, setBetAmount] = useState('2000');
-  const [selectedMatch, setSelectedMatch] = useState<MatchBetting | null>(null);
-  const [viewMode, setViewMode] = useState<'LIST' | 'BRACKET'>('LIST');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('TODO');
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userBets, setUserBets] = useState<any[]>([]);
-
-  // Recharge Modal State
-  const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
-  const [rechargeValue, setRechargeValue] = useState('2000');
-  const [isRecharging, setIsRecharging] = useState(false);
-  const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isInitializingDB, setIsInitializingDB] = useState(false);
+  const [resolveModalMatch, setResolveModalMatch] = useState<Match | null>(null);
+  
+  const isAdmin = userEmail === 'caponettopeppers@gmail.com';
+  
+  // Tabs: 'COMPETITION' (Pending Matches), 'RESOLVED' (Past Matches / Results), 'COMMUNITY' (Prediction Wall)
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'COMMUNITY'>('PENDING');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Local state for interactive prediction entries of the current user
+  const [userPredictions, setUserPredictions] = useState<Record<string, { home_score: number; away_score: number; hasPrediction: boolean; points_earned?: number }>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  
+  // Store original predictions from the database to check for unsaved modifications
+  const [originalPredictions, setOriginalPredictions] = useState<Record<string, { home_score: number; away_score: number }>>({});
 
   useEffect(() => {
-    let subProfile: (() => void) | undefined;
-    let subBets: (() => void) | undefined;
-
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        // Subscribe to profile for real-time balance
-        subProfile = dbService.subscribeProfile(session.user.id, (p) => {
-          setProfile(p);
-          setBalance(p.balance || 0);
-        });
-
-        // Subscribe to bets for real-time history
-        subBets = dbService.subscribeAllBets((allBets) => {
-          const userOnly = allBets.filter((b: any) => b.user_id === session.user.id);
-          setUserBets(userOnly);
-        });
-      }
-
-      // Matches don't change often but let's keep them static for now as they were
-      const mData = await dbService.getMatches();
-      setMatches(mData);
-      
-      setLoading(false);
-    };
-
-    init();
-
-    return () => {
-      if (subProfile) subProfile();
-      if (subBets) subBets();
-    };
-  }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const paymentStatus = params.get('payment');
+    let unsubscribeMatches: (() => void) | undefined;
+    let unsubscribeProfile: (() => void) | undefined;
+    let isMounted = true;
     
-    if (paymentStatus === 'success') {
-      toast.success('¡Pago procesado con éxito! Tu saldo se actualizará en breve.');
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (paymentStatus === 'failure') {
-      toast.error('El pago no pudo completarse. Intenta nuevamente.');
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+    const init = async () => {
+      try {
+        // Automatically cleanup retired teams and matches in background
+        try {
+          fetch('/api/admin/clean-retired', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-supabase-url': import.meta.env.VITE_SUPABASE_URL || '',
+              'x-supabase-key': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+            }
+          }).catch(err => console.error('Silent cleanup failed:', err));
+        } catch (e) {
+          console.error('Trigger cleanup error:', e);
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!isMounted) return;
+        
+        if (session?.user) {
+          setUserEmail(session.user.email || null);
+          // Subscribe to profile
+          const unsubProfile = dbService.subscribeProfile(session.user.id, (p) => {
+            if (isMounted) setProfile(p);
+          });
+          
+          if (!isMounted) {
+            unsubProfile();
+          } else {
+            unsubscribeProfile = unsubProfile;
+          }
+          
+          // Get predictions
+          const preds = await dbService.getPredictions(session.user.id);
+          if (!isMounted) return;
+          
+          const mappedPreds: Record<string, { home_score: number; away_score: number; hasPrediction: boolean; points_earned?: number }> = {};
+          const mappedOriginals: Record<string, { home_score: number; away_score: number }> = {};
+          
+          preds.forEach((p: any) => {
+            mappedPreds[p.match_id] = {
+              home_score: p.home_score,
+              away_score: p.away_score,
+              hasPrediction: true,
+              points_earned: p.points_earned
+            };
+            mappedOriginals[p.match_id] = {
+              home_score: p.home_score,
+              away_score: p.away_score
+            };
+          });
+          
+          setUserPredictions(mappedPreds);
+          setOriginalPredictions(mappedOriginals);
+        }
+        
+        // Load and subscribe to matches
+        const unsubMatches = dbService.subscribeMatches((data) => {
+          if (isMounted) {
+            setMatches(data);
+            setLoading(false);
+          }
+        });
+        
+        if (!isMounted) {
+          unsubMatches();
+        } else {
+          unsubscribeMatches = unsubMatches;
+        }
+      } catch (err) {
+        console.error('Error in PRODE initialization:', err);
+        if (isMounted) setLoading(false);
+      }
+    };
+    
+    init();
+    
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribeMatches === 'function') unsubscribeMatches();
+      if (typeof unsubscribeProfile === 'function') unsubscribeProfile();
+    };
   }, []);
 
-  const handleRecharge = async () => {
-    if (!profile) return;
-    const amount = parseFloat(rechargeValue);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Ingresa un monto válido');
-      return;
-    }
+  const handleReseedDB = async () => {
+    if (!isAdmin) return;
+    setIsInitializingDB(true);
+    const toastId = toast.loading('Re-sembrando base de datos con Panamá (Removiendo Chile)...');
+    
+    const initialBracket = [
+      {
+        name: 'R32',
+        matches: Array(16).fill(null).map((_, i) => ({
+          id: `r32-${i}`,
+          homeTeam: WORLD_CUP_TEAMS[i * 2] || null,
+          awayTeam: WORLD_CUP_TEAMS[i * 2 + 1] || null,
+          status: 'pending' as const,
+          date: i < 4 ? '28 JUN' : i < 8 ? '29 JUN' : i < 12 ? '30 JUN' : '01 JUL',
+          location: ['LOS ANGELES', 'NEW YORK', 'DALLAS', 'HOUSTON', 'MEXICO CITY', 'TORONTO', 'BOSTON', 'MIAMI'][i % 8],
+          homeScore: '',
+          awayScore: ''
+        }))
+      },
+      {
+        name: 'R16',
+        matches: Array(8).fill(null).map((_, i) => ({
+          id: `r16-${i}`,
+          homeTeam: null,
+          awayTeam: null,
+          status: 'pending' as const,
+          date: i < 4 ? '04 JUL' : '05 JUL',
+          location: ['PHILADELPHIA', 'HOUSTON', 'NEW YORK', 'DALLAS'][i % 4],
+          homeScore: '',
+          awayScore: ''
+        }))
+      },
+      {
+        name: 'CUARTOS',
+        matches: Array(4).fill(null).map((_, i) => ({
+          id: `qf-${i}`,
+          homeTeam: null,
+          awayTeam: null,
+          status: 'pending' as const,
+          date: i < 2 ? '09 JUL' : '10 JUL',
+          location: ['BOSTON', 'LOS ANGELES', 'MIAMI', 'KANSAS CITY'][i],
+          homeScore: '',
+          awayScore: ''
+        }))
+      },
+      {
+        name: 'SEMIFINAL',
+        matches: Array(2).fill(null).map((_, i) => ({
+          id: `sf-${i}`,
+          homeTeam: null,
+          awayTeam: null,
+          status: 'pending' as const,
+          date: i === 0 ? '14 JUL' : '15 JUL',
+          location: i === 0 ? 'DALLAS' : 'ATLANTA',
+          homeScore: '',
+          awayScore: ''
+        }))
+      },
+      {
+        name: 'FINAL',
+        matches: [{
+          id: 'final',
+          homeTeam: null,
+          awayTeam: null,
+          status: 'pending' as const,
+          date: '19 JUL',
+          location: 'NEW YORK / NEW JERSEY',
+          homeScore: '',
+          awayScore: ''
+        }]
+      }
+    ];
 
-    setIsRecharging(true);
     try {
-      // Call our backend to create a Mercado Pago preference
-      const response = await fetch('/api/create-preference', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, userId: profile.id })
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Falla al crear preferencia de Mercado Pago');
-      }
-
-      const { init_point } = await response.json();
-
-      // Redirect to Mercado Pago Checkout
-      toast.loading('Redirigiendo a Mercado Pago...', { duration: 2000 });
-      window.location.href = init_point;
+      await dbService.seedInitialData(WORLD_CUP_TEAMS, MOCK_MATCHES, initialBracket);
+      toast.success('¡Base de datos del Mundial inicializada correctamente (PAN registrado, CHI removido)! ⚽', { id: toastId });
+      // Reload matches list
+      const updatedMatches = await dbService.getMatches();
+      setMatches(updatedMatches);
     } catch (err: any) {
-      toast.error('Error: ' + (err.message || 'Error al conectar con Mercado Pago'));
+      toast.error('Error al re-sembrar base de datos: ' + (err.message || 'Intente de nuevo'), { id: toastId });
       console.error(err);
-      
-      // Fallback for demo if MP is not configured
-      if (err.message.includes('not configured')) {
-        toast('Modo Demo: Se aplicará recarga directa bypassando Mercado Pago', { icon: 'ℹ️' });
-        const newBal = await dbService.addCredits(profile.id, amount);
-        setBalance(newBal);
-        setIsRechargeModalOpen(false);
-        toast.success(`¡Créditos cargados! Nuevo saldo: $${newBal}`);
-      }
     } finally {
-      setIsRecharging(false);
+      setIsInitializingDB(false);
+    }
+  };
+
+  const handleResolveMatch = async (matchId: string, homeScore: number, awayScore: number) => {
+    if (!isAdmin) return;
+    const toastId = toast.loading('Finalizando partido real y sumando puntos de PRODE...');
+    try {
+      const response = await fetch('/api/admin/resolve-match', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-supabase-url': import.meta.env.VITE_SUPABASE_URL || '',
+          'x-supabase-key': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        },
+        body: JSON.stringify({ matchId, homeScore, awayScore }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('¡Partido resuelto exitosamente! Puntos acreditados a todos en tiempo real.', { id: toastId });
+        // Reload matches list
+        const updatedMatches = await dbService.getMatches();
+        setMatches(updatedMatches);
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      toast.error('Error al resolver partido: ' + err.message, { id: toastId });
     }
   };
 
   const handleSyncMatches = async () => {
     setIsSyncing(true);
-    const toastId = toast.loading('Sincronizando con Football-Data.org...');
+    const toastId = toast.loading('Sincronizando partidos con el fixture...');
     try {
-      const res = await fetch('/api/sync-matches', { method: 'POST' });
+      const res = await fetch('/api/sync-matches', { 
+        method: 'POST',
+        headers: {
+          'x-supabase-url': import.meta.env.VITE_SUPABASE_URL || '',
+          'x-supabase-key': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        }
+      });
       const data = await res.json();
       if (data.success) {
         toast.success(`Sincronización exitosa: ${data.count} partidos procesados`, { id: toastId });
@@ -185,872 +277,773 @@ export const BettingZone: React.FC = () => {
         toast.error('Error: ' + (data.error || 'Fallo desconocido'), { id: toastId });
       }
     } catch (err: any) {
-      toast.error('Error de red al sincronizar', { id: toastId });
+      toast.error('Error al sincronizar fixture', { id: toastId });
       console.error(err);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const handleResetBalance = async () => {
-    if (!profile) return;
-    if (!confirm('¿Seguro que quieres resetear tu balance a $50.000?')) return;
+  // Adjust score predictions locally
+  const handleScoreChange = (matchId: string, team: 'home' | 'away', operation: 'increment' | 'decrement') => {
+    setUserPredictions(prev => {
+      const current = prev[matchId] || { home_score: 0, away_score: 0, hasPrediction: false };
+      let newScore = team === 'home' ? current.home_score : current.away_score;
+      
+      if (operation === 'increment') {
+        newScore += 1;
+      } else if (operation === 'decrement' && newScore > 0) {
+        newScore -= 1;
+      }
+      
+      return {
+        ...prev,
+        [matchId]: {
+          ...current,
+          [team === 'home' ? 'home_score' : 'away_score']: newScore
+        }
+      };
+    });
+  };
 
+  // Save single prediction to supabase
+  const handleSavePrediction = async (matchId: string) => {
+    if (!profile) {
+      toast.error('Por favor, inicia sesión para poder registrar tu pronóstico');
+      return;
+    }
+    
+    const pred = userPredictions[matchId] || { home_score: 0, away_score: 0 };
+    setSavingId(matchId);
+    
     try {
-      const newBal = await dbService.resetBalance(profile.id, 50000);
-      setBalance(newBal);
-      toast.success('¡Billetera reseteada correctamente!');
-    } catch (err: any) {
-      toast.error('Error al resetear');
-      console.error(err);
+      await dbService.savePrediction({
+        user_id: profile.id,
+        match_id: matchId,
+        home_score: pred.home_score,
+        away_score: pred.away_score
+      });
+      
+      setOriginalPredictions(prev => ({
+        ...prev,
+        [matchId]: {
+          home_score: pred.home_score,
+          away_score: pred.away_score
+        }
+      }));
+      
+      setUserPredictions(prev => ({
+        ...prev,
+        [matchId]: {
+          ...pred,
+          hasPrediction: true
+        }
+      }));
+      
+      toast.success('Pronóstico guardado exitosamente ⚽');
+    } catch (error: any) {
+      toast.error('Error al guardar pronóstico: ' + error.message);
+    } finally {
+      setSavingId(null);
     }
   };
 
-  const allMatches = useMemo(() => {
-    return matches.map(m => ({
-      id: m.id,
-      home: m.homeTeam || { name: 'TBD', flag_url: '', code: 'TBD' } as any,
-      away: m.awayTeam || { name: 'TBD', flag_url: '', code: 'TBD' } as any,
-      date: m.start_at ? formatDate(m.start_at) : 'TBD',
-      time: m.start_at ? new Date(m.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD',
-      venue: 'Estadio Mundialista',
-      city: m.group_name ? `Grupo ${m.group_name}` : 'Sede oficial',
-      round: m.phase === 'group' ? `Grupo ${m.group_name}` : m.phase,
-      odds: {
-        home: 1.5 + Math.random() * 2,
-        draw: 3.1 + Math.random() * 1.2,
-        away: 1.9 + Math.random() * 2.8
-      }
-    })) as MatchBetting[];
-  }, [matches]);
+  // Check if a prediction has changes compared to database values
+  const hasChanges = (matchId: string) => {
+    const current = userPredictions[matchId];
+    const original = originalPredictions[matchId];
+    
+    if (!current) return false;
+    if (!original) {
+      // If there is no original prediction and scores are non-zero, it counts as modified
+      return current.home_score > 0 || current.away_score > 0 || current.hasPrediction;
+    }
+    
+    return current.home_score !== original.home_score || current.away_score !== original.away_score;
+  };
 
+  // Get active stats for the logged-in player
+  const predictionStats = useMemo(() => {
+    const list = Object.values(userPredictions) as Array<{ home_score: number; away_score: number; hasPrediction: boolean; points_earned?: number }>;
+    const activeList = list.filter(p => p.hasPrediction);
+    const count = activeList.length;
+    const exactMatches = activeList.filter(p => p.points_earned === 3).length;
+    const outcomeMatches = activeList.filter(p => p.points_earned === 1).length;
+    
+    return {
+      count,
+      exactMatches,
+      outcomeMatches
+    };
+  }, [userPredictions]);
+
+  // Filter matches based on search term
   const filteredMatches = useMemo(() => {
-    return allMatches.filter(m => {
+    return matches.filter(m => {
+      const homeName = m.homeTeam?.name || m.home_team?.name || '';
+      const awayName = m.awayTeam?.name || m.away_team?.name || '';
       const matchesSearch = 
-        m.home.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        m.away.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.city.toLowerCase().includes(searchTerm.toLowerCase());
+        homeName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        awayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.group_name && m.group_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (m.phase && m.phase.toLowerCase().includes(searchTerm.toLowerCase()));
       
-      if (activeFilter === 'TODO') return matchesSearch;
-      return matchesSearch && m.round.includes(activeFilter);
+      if (!matchesSearch) return false;
+      
+      if (activeTab === 'PENDING') {
+        return m.status !== 'finished';
+      } else if (activeTab === 'RESOLVED') {
+        return m.status === 'finished';
+      }
+      return true;
     });
-  }, [allMatches, searchTerm, activeFilter]);
+  }, [matches, searchTerm, activeTab]);
 
-  const groupedMatches = useMemo((): { [key: string]: MatchBetting[] } => {
-    const groups: { [key: string]: MatchBetting[] } = {};
+  // Group pending/resolved matches by date for clean editorial rhythm
+  const groupedMatches = useMemo(() => {
+    const groups: Record<string, Match[]> = {};
     filteredMatches.forEach(m => {
-      if (!groups[m.date]) groups[m.date] = [];
-      groups[m.date].push(m);
+      const dateStr = m.start_at ? formatDate(m.start_at) : 'Fecha pendiente';
+      if (!groups[dateStr]) groups[dateStr] = [];
+      groups[dateStr].push(m);
     });
     return groups;
   }, [filteredMatches]);
+  console.log('Grouped Matches:', groupedMatches);
 
-  const addToBetSlip = React.useCallback((match: MatchBetting, selection: string, odds: number, market: string = 'Ganador del partido') => {
-    const betId = `${match.id}-${selection}-${market}`;
-    
-    setBetSlip(prev => {
-      let nextSlip: BetOption[] = [];
-      const exists = prev.find(b => b.id === betId);
-      if (exists) {
-        // Toggle: Si ya existe exactamente la misma apuesta, la quitamos
-        nextSlip = [];
-      } else {
-        // Como el usuario pidió "solo una a la vez", forzamos el slip a tener solo este item
-        nextSlip = [{
-          id: betId,
-          matchId: match.id,
-          matchTeams: `${match.home.name} vs ${match.away.name}`,
-          selection: `${selection}`,
-          odds
-        }];
-      }
-      slipRef.current = nextSlip;
-      return nextSlip;
-    });
-  }, []);
-
-  const removeFromSlip = React.useCallback((id: string) => {
-    setBetSlip(prev => {
-      const nextSlip = prev.filter(b => b.id !== id);
-      slipRef.current = nextSlip;
-      return nextSlip;
-    });
-  }, []);
-
-  const isPlacingBetRef = React.useRef(false);
-
-  const slipRef = React.useRef<BetOption[]>([]);
-  useEffect(() => {
-    slipRef.current = betSlip;
-  }, [betSlip]);
-
-  const userStats = useMemo(() => {
-    const totalWagered = userBets.reduce((acc, b) => acc + (b.amount || 0), 0);
-    const winnableAmount = userBets.reduce((acc, b) => acc + (b.potential_win || 0), 0);
-    return {
-      count: userBets.length,
-      totalWagered,
-      winnableAmount
-    };
-  }, [userBets]);
-
-  const handlePlaceBet = async () => {
-    if (isPlacingBetRef.current || isPlacingBet) {
-      console.log('Bet placement already in progress, ignoring extra click.');
-      return;
-    }
-    
-    if (!profile) {
-      toast.error('Debes iniciar sesión para apostar');
-      return;
-    }
-
-    const currentSlip = slipRef.current;
-    if (currentSlip.length === 0) {
-      toast.error('Selecciona una opción para apostar');
-      return;
-    }
-
-    const amount = parseFloat(betAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Ingresa un monto válido');
-      return;
-    }
-
-    if (amount < 2000) {
-      toast.error('La apuesta mínima es de $2.000');
-      return;
-    }
-
-    if (amount > balance) {
-      toast.error('Saldo insuficiente');
-      return;
-    }
-
-    // LOCK
-    isPlacingBetRef.current = true;
-    setIsPlacingBet(true);
-    
-    const loadingToast = toast.loading('Procesando apuesta única...');
-    
-    // Capturamos los items actuales y LIMPIAMOS el slip de inmediato de forma atómica
-    const itemsToSave = [...currentSlip];
-    const totalOddsVal = itemsToSave.reduce((acc, bet) => acc * bet.odds, 1);
-    const winVal = amount * totalOddsVal;
-    
-    // Vaciamos el slip tanto en estado como en el ref para evitar cualquier fuga
-    setBetSlip([]);
-    slipRef.current = [];
-
-    try {
-      // Usamos la función atómica para asegurar que no haya duplicados y el balance sea correcto
-      const result = await dbService.placeBetAtomic({
-        user_id: profile.id,
-        items: itemsToSave,
-        amount,
-        odds: totalOddsVal,
-        potential_win: winVal
+  // User's active predictions list sorted chronologically
+  const savedPredictionsList = useMemo(() => {
+    return matches
+      .filter(m => {
+        const pred = userPredictions[m.id] as any;
+        return pred && pred.hasPrediction;
+      })
+      .map(m => {
+        const pred = userPredictions[m.id] as any;
+        return {
+          match: m,
+          prediction: pred,
+        };
+      })
+      .sort((a, b) => {
+        const dateA = a.match.start_at ? new Date(a.match.start_at).getTime() : 0;
+        const dateB = b.match.start_at ? new Date(b.match.start_at).getTime() : 0;
+        return dateA - dateB;
       });
-
-      if (result && result.new_balance !== undefined) {
-        setBalance(result.new_balance);
-        // Refresh bets
-        const bets = await dbService.getAllBets();
-        const userOnly = bets.filter((b: any) => b.user_id === profile.id);
-        setUserBets(userOnly);
-      }
-      
-      toast.success(`¡Apuesta de $${amount} confirmada! ⚽`, { id: loadingToast });
-    } catch (err: any) {
-      // Si falla, devolvemos los items al slip para que el usuario no los pierda
-      setBetSlip(itemsToSave);
-      slipRef.current = itemsToSave;
-      const msg = err.message || 'Error técnico al procesar';
-      toast.error(`Atención: ${msg}`, { id: loadingToast });
-      console.error('Bet Error:', err);
-    } finally {
-      // Liberamos el bloqueo después de un pequeño cooldown
-      setTimeout(() => {
-        setIsPlacingBet(false);
-        isPlacingBetRef.current = false;
-      }, 1000);
-    }
-  };
-
-  const handleDeleteBet = async (betId: string, amount: number) => {
-    try {
-      await dbService.deleteBet(betId);
-      
-      // Update balance (refund)
-      if (profile?.id) {
-        const newBalance = await dbService.addCredits(profile.id, amount);
-        setBalance(newBalance);
-        
-        // Refresh local history
-        setUserBets(prev => prev.filter(b => b.id !== betId));
-        toast.success('Apuesta eliminada y reembolso procesado 💸');
-      }
-    } catch (error) {
-      console.error('Error deleting bet:', error);
-      toast.error('No se pudo eliminar la apuesta');
-    }
-  };
-
-  const totalOdds = betSlip.reduce((acc, bet) => acc * bet.odds, 1);
-  const potentialWin = (parseFloat(betAmount) || 0) * totalOdds;
-
-  const dummyRounds = [
-    {
-      title: 'Octavos de Final',
-      matches: matches.slice(0, 8).map(m => ({
-        id: m.id,
-        homeTeam: m.home,
-        awayTeam: m.away,
-        homeScore: 0,
-        awayScore: 0,
-        status: 'PENDING',
-        date: m.date
-      }))
-    }
-  ];
+  }, [matches, userPredictions]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center gap-6 font-sans">
+      <div className="min-h-[80vh] flex flex-col items-center justify-center gap-6">
         <div className="relative">
-          <div className="w-24 h-24 border-8 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin" />
+          <div className="w-20 h-20 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin" />
           <div className="absolute inset-0 flex items-center justify-center">
-            <Trophy className="text-cyan-500 animate-pulse" size={32} />
+            <Trophy className="text-orange-500 animate-pulse" size={28} />
           </div>
         </div>
-        <div className="space-y-2 text-center">
-          <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">SYSTEM ONLINE</h3>
-          <p className="text-[10px] text-cyan-500/50 font-bold uppercase tracking-[0.5em] animate-pulse italic">Iniciando protocolo de apuestas...</p>
+        <div className="text-center space-y-1">
+          <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">SISTEMA PRODE</h3>
+          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.4em] animate-pulse italic">Cargando fixtures y predicciones...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white overflow-x-hidden pb-40 font-sans">
-      {/* Decorative Background */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-blue-600/5 blur-[150px] rounded-full" />
-        <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-amber-500/5 blur-[150px] rounded-full" />
-        <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-purple-500/5 blur-[100px] rounded-full" />
+    <div className="space-y-10">
+      {/* Decorative Blur Backgrounds */}
+      <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
+        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-orange-500/5 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[10%] left-[-10%] w-[500px] h-[500px] bg-orange-600/3 blur-[140px] rounded-full" />
       </div>
 
-      {/* Recharge Modal */}
-      <AnimatePresence>
-        {isRechargeModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsRechargeModalOpen(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-md bg-[#0f172a] border border-white/10 rounded-[2.5rem] p-8 shadow-2xl overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none rotate-12">
-                <Wallet size={120} className="text-white" />
-              </div>
-
-              <div className="relative z-10 space-y-8">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center text-black">
-                      <Wallet size={20} />
-                    </div>
-                    <h3 className="text-xl font-black italic uppercase tracking-tighter">Cargar Créditos</h3>
-                  </div>
-                  <button onClick={() => setIsRechargeModalOpen(false)} className="text-white/20 hover:text-white transition-colors">
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.5em] italic">INGRESAR MONTO (USD)</p>
-                  <div className="bg-black/40 border border-white/10 rounded-2xl p-6 flex items-center justify-between">
-                    <span className="text-3xl font-black italic text-amber-500">$</span>
-                    <input 
-                      type="number"
-                      value={rechargeValue}
-                      onChange={(e) => setRechargeValue(e.target.value)}
-                      className="w-full bg-transparent border-none text-right text-4xl font-black italic text-white outline-none tabular-nums placeholder:text-white/5"
-                      placeholder="0"
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-4 gap-2">
-                  {['100', '500', '1000', '5000'].map(val => (
-                    <button 
-                      key={val}
-                      onClick={() => setRechargeValue(val)}
-                      className={`py-3 rounded-xl border text-[10px] font-black transition-all ${rechargeValue === val ? 'bg-amber-500 border-amber-500 text-black' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
-                    >
-                      ${val}
-                    </button>
-                  ))}
-                </div>
-
-                <button 
-                  onClick={handleRecharge}
-                  disabled={isRecharging}
-                  className="w-full bg-amber-500 text-black py-5 rounded-2xl text-xs font-black italic uppercase tracking-[0.3em] shadow-xl shadow-amber-500/20 hover:bg-white transition-all disabled:opacity-50"
-                >
-                  {isRecharging ? 'PROCESANDO...' : 'CONFIRMAR CARGA'}
-                </button>
-
-                <p className="text-[8px] text-white/10 text-center font-bold uppercase tracking-widest leading-relaxed">
-                  * Los créditos se verán reflejados <br/> instantáneamente en tu billetera.
-                </p>
-              </div>
-            </motion.div>
+      {/* Futuristic Banner Header */}
+      <div className="grid lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-8 bg-zinc-900 border border-zinc-800 p-10 md:p-14 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none rotate-12 text-orange-500">
+            <Trophy size={320} />
           </div>
-        )}
-      </AnimatePresence>
-
-      <div className="relative max-w-[1600px] mx-auto p-4 md:p-8 lg:p-12 space-y-10">
-        
-        {/* Fututistic Dashboard Header */}
-        <div className="grid lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3 bg-linear-to-br from-[#0f172a] via-[#020617] to-[#0f172a] p-10 md:p-16 rounded-[3rem] border border-white/5 relative overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-            <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-cyan-500 to-transparent opacity-50" />
-            
-            <div className="relative z-10 space-y-8">
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-4"
-              >
-                <div className="px-5 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-full flex items-center gap-2">
-                  <div className="w-2 h-2 bg-cyan-500 rounded-full animate-ping" />
-                  <span className="text-[10px] font-black text-cyan-400 uppercase tracking-[0.3em] italic">Red Operativa Mundial</span>
-                </div>
-                <button 
-                  onClick={handleSyncMatches}
-                  disabled={isSyncing}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[9px] font-black uppercase tracking-widest text-white/40 hover:bg-white/10 hover:text-cyan-400 transition-all disabled:opacity-50"
-                >
-                  <TrendingUp size={12} className={isSyncing ? 'animate-spin' : ''} />
-                  {isSyncing ? 'Sincronizando...' : 'Live Sync API'}
-                </button>
-                <div className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">Est. 2026</div>
-              </motion.div>
-
-              <div className="space-y-2">
-                <h1 className="text-7xl md:text-9xl font-black italic uppercase tracking-tighter leading-none">
-                  CYBER<br/>
-                  <span className="text-transparent bg-clip-text bg-linear-to-r from-cyan-400 via-blue-500 to-purple-600">ARENA</span>
-                </h1>
-                <p className="max-w-xl text-xs font-bold text-white/40 uppercase tracking-widest leading-relaxed ml-2 italic">
-                  Plataforma de alta fidelidad para el Mercado de Apuestas de la Copa Mundial FIFA 2026. Datos sincronizados vía satélite en tiempo real.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-4 pt-4">
-                <button 
-                  onClick={() => setViewMode('LIST')}
-                  className={`px-10 py-5 rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] italic transition-all relative overflow-hidden group ${viewMode === 'LIST' ? 'bg-cyan-500 text-black shadow-[0_0_30px_rgba(6,182,212,0.4)]' : 'bg-white/5 border border-white/10 hover:border-cyan-500/50'}`}
-                >
-                  <span className="relative z-10 flex items-center gap-2 font-black">
-                    <ListOrdered size={16} /> Panel de Eventos
-                  </span>
-                </button>
-                <button 
-                  onClick={() => setViewMode('BRACKET')}
-                  className={`px-10 py-5 rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] italic transition-all relative overflow-hidden group ${viewMode === 'BRACKET' ? 'bg-purple-600 text-white shadow-[0_0_30px_rgba(147,51,234,0.4)]' : 'bg-white/5 border border-white/10 hover:border-purple-500/50'}`}
-                >
-                  <span className="relative z-10 flex items-center gap-2 font-black">
-                    <LayoutDashboard size={16} /> Visualizador Bracket
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#0f172a] p-10 rounded-[3rem] border border-white/5 shadow-2xl flex flex-col justify-between group overflow-hidden relative">
-            <div className="absolute inset-0 bg-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-            
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.5em] italic">BILLETERA</p>
-                <Wallet className="text-white/10 group-hover:text-cyan-500 transition-colors" size={20} />
-              </div>
-              <div className="space-y-1">
-                <h4 className="text-5xl font-black text-white italic tabular-nums tracking-tighter">${balance.toLocaleString()}</h4>
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                  <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest italic">Activo & Verificado</span>
-                </div>
-              </div>
-
-              <div className="pt-4 grid grid-cols-2 gap-4 border-t border-white/5">
-                <div className="space-y-1">
-                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest italic">Apuestas</p>
-                  <p className="text-xl font-black text-white italic tabular-nums">{userStats.count}</p>
-                </div>
-                <div className="space-y-1 text-right">
-                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest italic">Total Jugado</p>
-                  <p className="text-xl font-black text-cyan-500 italic tabular-nums">${userStats.totalWagered.toLocaleString()}</p>
-                </div>
-              </div>
-
-              {userBets.length > 0 && (
-                <div className="space-y-3 pt-4 border-t border-white/5 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
-                  <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] italic mb-2">Historial Reciente</p>
-                  {userBets.slice(0, 5).map((bet, idx) => (
-                    <div key={bet.id || idx} className="bg-white/5 rounded-xl p-3 border border-white/5 flex items-center justify-between group/bet">
-                      <div className="space-y-1">
-                        <div className="flex gap-1 overflow-hidden max-w-[120px]">
-                          {bet.items?.map((it: any, i: number) => (
-                            <span key={i} className="text-[7px] font-black bg-cyan-500/20 text-cyan-400 px-1.5 py-0.5 rounded uppercase">
-                              {it.selection.slice(0, 3)}
-                            </span>
-                          ))}
-                        </div>
-                        <p className="text-[8px] font-bold text-white/40 italic">
-                          {new Date(bet.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-black text-white italic">${bet.amount.toLocaleString()}</p>
-                        <p className="text-[9px] font-black text-emerald-500 italic">x{bet.odds?.toFixed(2)}</p>
-                      </div>
-                      <button 
-                        onClick={() => handleDeleteBet(bet.id, bet.amount)}
-                        className="ml-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 opacity-0 group-hover/bet:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <motion.button 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setIsRechargeModalOpen(true)}
-                className="w-full bg-cyan-500 text-black py-4 rounded-2xl text-[10px] font-black italic uppercase tracking-[0.4em] shadow-xl hover:bg-white transition-all"
-              >
-                Recargar Fondos
-              </motion.button>
-              <button 
-                onClick={handleResetBalance}
-                className="w-full text-center py-2 text-[8px] font-black text-white/20 hover:text-red-500 uppercase tracking-widest italic transition-colors"
-              >
-                Resetear Cuenta
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Search & Filter Component */}
-        <div className="flex flex-col md:flex-row items-center gap-6">
-          <div className="relative flex-1 group">
-            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-cyan-500 transition-colors" size={20} />
-            <input 
-              type="text"
-              placeholder="Filtro de búsqueda avanzada..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-6 pl-16 pr-6 text-sm font-black italic focus:border-cyan-500/50 outline-none transition-all placeholder:text-white/10 uppercase tracking-[0.2em]"
-            />
-          </div>
-          <div className="flex gap-2">
-            {['TODO', 'Grupo', 'Final'].map(f => (
-              <button 
-                key={f}
-                onClick={() => setActiveFilter(f)}
-                className={`px-8 py-3 rounded-xl text-[9px] font-black italic uppercase tracking-widest border transition-all ${activeFilter === f ? 'bg-white text-black border-white shadow-xl' : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:border-white/10'}`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-12 gap-8 relative z-10">
           
-          {/* Main Matches Area */}
-          <div className="lg:col-span-8 space-y-12">
-            <AnimatePresence mode="wait">
-              {selectedMatch ? (
-                /* MATCH DETAIL (CYBER STYLE) */
-                <motion.div
-                  key="detail"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.02 }}
-                  className="space-y-8"
-                >
-                  <button 
-                    onClick={() => setSelectedMatch(null)}
-                    className="flex items-center gap-3 text-cyan-500/40 hover:text-cyan-500 transition-all text-[10px] font-black uppercase tracking-[0.4em] italic mb-4"
-                  >
-                    <ChevronLeft size={16} /> CERRAR VISTA DETALLADA
-                  </button>
-
-                  <div className="bg-[#0f172a] border border-white/5 rounded-[4rem] p-12 md:p-24 relative overflow-hidden shadow-2xl">
-                    <div className="absolute top-0 right-0 p-20 opacity-5 pointer-events-none rotate-12 text-cyan-500">
-                      <TrendingUp size={600} />
-                    </div>
-
-                    <div className="relative z-10 space-y-20">
-                      <div className="flex flex-col items-center gap-6 text-center">
-                        <div className="px-6 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-black italic text-cyan-500 uppercase tracking-[0.4em]">
-                           {selectedMatch.venue.toUpperCase()} • {selectedMatch.city.toUpperCase()}
-                        </div>
-                        <h3 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter text-white/10">{selectedMatch.date} @ {selectedMatch.time}</h3>
-                      </div>
-
-                      <div className="flex flex-col md:flex-row items-center justify-between gap-12">
-                        <div className="flex flex-col items-center gap-8 group flex-1">
-                           <div className="relative">
-                             <div className="absolute -inset-4 bg-cyan-500/20 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                             <div className="w-48 md:w-64 aspect-[4/3] rounded-[2rem] overflow-hidden border-4 border-white/10 relative z-10">
-                                <img src={selectedMatch.home.flag_url} className="w-full h-full object-cover" />
-                             </div>
-                           </div>
-                           <h4 className="text-4xl md:text-6xl font-black italic uppercase tracking-tighter text-center">{selectedMatch.home.name}</h4>
-                        </div>
-
-                        <div className="flex flex-col items-center">
-                           <span className="text-8xl md:text-[10rem] font-black italic text-white/5 leading-none">VS</span>
-                        </div>
-
-                        <div className="flex flex-col items-center gap-8 group flex-1">
-                           <div className="relative">
-                             <div className="absolute -inset-4 bg-purple-500/20 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                             <div className="w-48 md:w-64 aspect-[4/3] rounded-[2rem] overflow-hidden border-4 border-white/10 relative z-10">
-                                <img src={selectedMatch.away.flag_url} className="w-full h-full object-cover" />
-                             </div>
-                           </div>
-                           <h4 className="text-4xl md:text-6xl font-black italic uppercase tracking-tighter text-center">{selectedMatch.away.name}</h4>
-                        </div>
-                      </div>
-
-                      {/* Odds Selection in detail */}
-                      <div className="grid md:grid-cols-3 gap-6 pt-10">
-                         {[
-                           { l: selectedMatch.home.name, o: selectedMatch.odds.home, t: selectedMatch.home.name },
-                           { l: 'EMPATE', o: selectedMatch.odds.draw, t: 'EMPATE' },
-                           { l: selectedMatch.away.name, o: selectedMatch.odds.away, t: selectedMatch.away.name }
-                         ].map(opt => (
-                           <button
-                             key={opt.l}
-                             onClick={() => addToBetSlip(selectedMatch, opt.l, opt.o, '1X2')}
-                             className={`p-10 rounded-[2.5rem] border transition-all flex flex-col items-center gap-3 relative overflow-hidden group/opt ${
-                               betSlip.find(b => b.id === `${selectedMatch.id}-${opt.l}-1X2`)
-                                 ? 'bg-cyan-500 border-cyan-500 text-black shadow-[0_0_40px_rgba(6,182,212,0.3)]'
-                                 : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20'
-                             }`}
-                           >
-                             <span className={`text-[9px] font-black uppercase tracking-[0.4em] italic mb-2 ${betSlip.find(b => b.id === `${selectedMatch.id}-${opt.l}-1X2`) ? 'text-black/60' : 'text-white/20'}`}>
-                               {opt.t}
-                             </span>
-                             <span className="text-4xl font-black italic tracking-tighter tabular-nums">{opt.o.toFixed(2)}</span>
-                             <span className={`text-[10px] font-black uppercase italic ${betSlip.find(b => b.id === `${selectedMatch.id}-${opt.l}-1X2`) ? 'text-black' : 'text-cyan-500'}`}>
-                               SELECCIONAR
-                             </span>
-                           </button>
-                         ))}
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ) : viewMode === 'BRACKET' ? (
-                /* BRACKET VIEW */
-                <motion.div
-                  key="bracket"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                >
-                  <TournamentBracket 
-                    rounds={dummyRounds} 
-                    onMatchClick={(bracketMatch) => {
-                      // Map bracket match back to a betting match
-                      const mockMatch: MatchBetting = {
-                        id: bracketMatch.id,
-                        home: bracketMatch.homeTeam || WORLD_CUP_TEAMS[0],
-                        away: bracketMatch.awayTeam || WORLD_CUP_TEAMS[1],
-                        date: bracketMatch.date || 'TBD',
-                        time: '20:00',
-                        venue: 'ESTADIO MUNDIALISTA',
-                        city: 'CIUDAD ANFITRIONA',
-                        round: 'Eliminatorias',
-                        odds: { home: 2.1, draw: 3.4, away: 2.8 }
-                      };
-                      setSelectedMatch(mockMatch);
-                    }}
-                  />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="list"
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -30 }}
-                  className="space-y-16"
-                >
-                  {(Object.entries(groupedMatches) as [string, MatchBetting[]][]).map(([date, dateMatches]) => (
-                    <div key={date} className="space-y-6">
-                      <div className="flex items-center gap-6 px-4">
-                        <div className="w-1.5 h-12 bg-linear-to-b from-cyan-500 to-purple-600 rounded-full" />
-                        <div>
-                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">{date}</h3>
-                          <p className="text-[10px] text-white/20 font-black uppercase tracking-[0.4em] italic">Cronograma oficial de competencia</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-4">
-                        {dateMatches.map(match => (
-                          <motion.div 
-                            key={match.id} 
-                            whileHover={{ scale: 1.01, x: 10 }}
-                            onClick={(e) => {
-                              if (!(e.target as HTMLElement).closest('button')) {
-                                setSelectedMatch(match);
-                              }
-                            }}
-                            className="bg-[#0f172a]/40 border border-white/5 rounded-3xl p-8 hover:bg-[#0f172a]/80 transition-all group cursor-pointer shadow-xl relative overflow-hidden"
-                          >
-                            {/* Card Decoration */}
-                            <div className="absolute top-0 right-10 bottom-0 w-px bg-linear-to-b from-transparent via-cyan-500/20 to-transparent" />
-                            
-                            <div className="flex flex-col xl:flex-row items-center gap-10">
-                              <div className="flex-1 w-full xl:w-auto">
-                                <div className="flex items-center gap-4 mb-6">
-                                  <div className="px-3 py-1 bg-white/5 rounded-md text-[8px] font-black italic text-white/30 uppercase tracking-[0.3em] border border-white/5">
-                                    LIVE FEED
-                                  </div>
-                                  <span className="text-[10px] font-black text-cyan-500 italic uppercase tabular-nums">{match.time}</span>
-                                </div>
-                                
-                                <div className="space-y-6">
-                                  <div className="flex items-center justify-between group/home">
-                                    <div className="flex items-center gap-5">
-                                      <div className="w-12 h-8 rounded-lg overflow-hidden border border-white/10 shadow-lg">
-                                        <img src={match.home.flag_url} className="w-full h-full object-cover" />
-                                      </div>
-                                      <span className="text-xl font-black italic uppercase tracking-tight group-hover/home:text-cyan-400 transition-colors">{match.home.name}</span>
-                                    </div>
-                                    <span className="text-[10px] font-black text-white/10 group-hover/home:text-white/40 transition-colors">{match.home.code}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between group/away">
-                                    <div className="flex items-center gap-5">
-                                      <div className="w-12 h-8 rounded-lg overflow-hidden border border-white/10 shadow-lg">
-                                        <img src={match.away.flag_url} className="w-full h-full object-cover" />
-                                      </div>
-                                      <span className="text-xl font-black italic uppercase tracking-tight group-hover/away:text-purple-400 transition-colors">{match.away.name}</span>
-                                    </div>
-                                    <span className="text-[10px] font-black text-white/10 group-hover/away:text-white/40 transition-colors">{match.away.code}</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-3 gap-3 w-full xl:w-[450px]">
-                                {[
-                                  { label: match.home.name, code: match.home.name, odds: match.odds.home },
-                                  { label: 'EMPATE', code: 'EMPATE', odds: match.odds.draw },
-                                  { label: match.away.name, code: match.away.name, odds: match.odds.away }
-                                ].map(opt => (
-                                  <button
-                                    key={opt.label}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      addToBetSlip(match, opt.label, opt.odds, '1X2');
-                                    }}
-                                    className={`py-8 rounded-3xl border transition-all flex flex-col items-center justify-center gap-2 group/btn ${
-                                      betSlip.find(b => b.id === `${match.id}-${opt.label}-1X2`)
-                                        ? 'bg-cyan-500 border-cyan-500 text-black font-black shadow-[0_0_20px_rgba(6,182,212,0.5)]'
-                                        : 'bg-white/5 border-white/5 hover:border-cyan-500/50'
-                                    }`}
-                                  >
-                                    <span className={`text-[8px] font-black uppercase italic tracking-widest ${betSlip.find(b => b.id === `${match.id}-${opt.label}-1X2`) ? 'text-black/60' : 'text-white/20 group-hover/btn:text-cyan-500'}`}>
-                                      {opt.code}</span>
-                                    <span className="text-2xl font-black italic tabular-nums tracking-tighter">{opt.odds.toFixed(2)}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Community Board Section */}
-            <div className="pt-20 border-t border-white/5">
-              <CommunityBoard 
-                onBetDeleted={async () => {
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (session?.user) {
-                    const p = await dbService.getProfile(session.user.id);
-                    if (p) {
-                      setProfile(p);
-                      setBalance(p.balance || 0);
-                    }
-                  }
-                }} 
-              />
+          <div className="space-y-6 relative z-10">
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="px-4 py-1.5 bg-orange-500/10 border border-orange-500/20 rounded-full text-[9px] font-black tracking-widest text-orange-500 uppercase italic">
+                PRODE OFICIAL COPA MUNDIAL 2026
+              </span>
+              <button 
+                onClick={handleSyncMatches}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-full text-[9px] font-black text-zinc-400 hover:text-white transition-all disabled:opacity-50 uppercase tracking-widest"
+              >
+                <Clock size={12} className={isSyncing ? 'animate-spin' : ''} />
+                {isSyncing ? 'Sincronizando...' : 'Actualizar Fixture'}
+              </button>
+            </div>
+            
+            <div className="space-y-2">
+              <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter leading-none">
+                PRONÓSTICO DE LA COPA<br/>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-600">PRODE DIGITAL</span>
+              </h1>
+              <p className="max-w-xl text-xs font-bold text-zinc-500 uppercase tracking-widest leading-relaxed italic">
+                Demuestra tus conocimientos futbolísticos sumando puntos por aciertos exactos de marcadores o resultados en las llaves del torneo.
+              </p>
             </div>
           </div>
 
-          {/* New Cyber Bet Slip */}
-          <div className="lg:col-span-4 h-fit lg:sticky lg:top-8">
-            <div className="bg-[#0f172a] border border-white/5 rounded-[3.5rem] p-10 shadow-2xl relative overflow-hidden group">
-               <div className="absolute top-0 right-0 p-16 opacity-5 pointer-events-none rotate-45 text-cyan-500">
-                 <Trophy size={300} />
-               </div>
+          <div className="flex flex-wrap gap-3 pt-8 relative z-10 border-t border-zinc-800/60 mt-8">
+            <button 
+              onClick={() => setActiveTab('PENDING')}
+              className={`px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] italic transition-all ${
+                activeTab === 'PENDING' 
+                  ? 'bg-orange-500 text-black shadow-[0_0_25px_rgba(249,115,22,0.3)]' 
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700/50'
+              }`}
+            >
+              ⚽ Próximos Partidos
+            </button>
+            <button 
+              onClick={() => setActiveTab('RESOLVED')}
+              className={`px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] italic transition-all ${
+                activeTab === 'RESOLVED' 
+                  ? 'bg-orange-500 text-black shadow-[0_0_25px_rgba(249,115,22,0.3)]' 
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700/50'
+              }`}
+            >
+              📊 Resultados & Puntos
+            </button>
+            <button 
+              onClick={() => setActiveTab('COMMUNITY')}
+              className={`px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] italic transition-all ${
+                activeTab === 'COMMUNITY' 
+                  ? 'bg-orange-500 text-black shadow-[0_0_25px_rgba(249,115,22,0.3)]' 
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700/50'
+              }`}
+            >
+              👥 Muro de Pronósticos
+            </button>
+          </div>
+        </div>
 
-               <div className="relative z-10 flex flex-col gap-10">
-                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 bg-cyan-500 text-black rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-                        <DollarSign size={28} />
-                      </div>
-                      <div>
-                        <h3 className="text-3xl font-black italic uppercase tracking-tighter leading-none">SLIP</h3>
-                        <p className="text-[9px] font-bold text-cyan-500/50 uppercase tracking-[0.4em] italic mt-1">OPERATIVO 24/7</p>
-                      </div>
-                    </div>
-                    {betSlip.length > 0 && (
-                      <button 
-                        onClick={() => {
-                          setBetSlip([]);
-                          slipRef.current = [];
-                        }}
-                        className="text-[9px] font-black uppercase text-white/20 hover:text-red-500 transition-colors italic tracking-widest"
-                      >
-                        Limpiar Todo
-                      </button>
-                    )}
-                 </div>
-
-                 <div className="space-y-4 min-h-[100px] max-h-[500px] overflow-y-auto pr-2 scrollbar-hide">
-                    <AnimatePresence mode="popLayout">
-                      {betSlip.length === 0 ? (
-                        <motion.div 
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="py-16 text-center space-y-6"
-                        >
-                           <Download className="mx-auto text-white/5 -rotate-90 animate-bounce" size={48} />
-                           <p className="text-[10px] font-black text-white/10 uppercase italic tracking-[0.5em] leading-relaxed">
-                             SISTEMA EN ESPERA<br/>SELECCIONE UN EVENTO
-                           </p>
-                        </motion.div>
-                      ) : (
-                        betSlip.map(bet => (
-                          <motion.div 
-                            key={bet.id}
-                            initial={{ opacity: 0, x: 30, scale: 0.9 }}
-                            animate={{ opacity: 1, x: 0, scale: 1 }}
-                            exit={{ opacity: 0, x: -50, scale: 0.9, transition: { duration: 0.2 } }}
-                            className="bg-white/5 border border-white/5 rounded-[2rem] p-8 relative group/card hover:bg-cyan-500/5 hover:border-cyan-500/20 transition-all"
-                          >
-                             <button 
-                               onClick={() => removeFromSlip(bet.id)}
-                               className="absolute top-6 right-6 text-white/10 hover:text-red-500 transition-colors"
-                             >
-                               <Trash2 size={18} />
-                             </button>
-                             <div className="space-y-6">
-                                <div className="space-y-1">
-                                  <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] italic">{bet.matchTeams}</p>
-                                  <h4 className="text-xl font-black italic uppercase text-white tracking-widest">{bet.selection}</h4>
-                                </div>
-                                <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                                   <span className="text-[9px] font-black text-cyan-500 uppercase italic tracking-widest">CUOTA</span>
-                                   <span className="text-2xl font-black italic text-cyan-400 tabular-nums">{bet.odds.toFixed(2)}</span>
-                                </div>
-                             </div>
-                          </motion.div>
-                        ))
-                      )}
-                    </AnimatePresence>
-                 </div>
-
-                 {betSlip.length > 0 && (
-                   <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="space-y-8 pt-8 border-t border-white/5"
-                   >
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between text-[9px] font-black uppercase italic tracking-widest text-white/30">
-                          <span>Importe de Apuesta</span>
-                          <span>Billetera: ${balance.toLocaleString()}</span>
-                        </div>
-                        <div className="bg-black/40 border border-white/10 rounded-2xl p-6 flex items-center justify-between group-focus-within:border-cyan-500/50 transition-all">
-                           <span className="text-3xl font-black text-white/20 italic">$</span>
-                           <input 
-                             type="number"
-                             value={betAmount}
-                             onChange={(e) => setBetAmount(e.target.value)}
-                             className="w-full bg-transparent border-none text-right text-4xl font-black italic text-white outline-none tabular-nums"
-                           />
-                        </div>
-                        <div className="flex gap-2">
-                           {['2000', '5000', '10000', 'MAX'].map(v => (
-                             <button
-                               key={v}
-                               onClick={() => setBetAmount(v === 'MAX' ? balance.toString() : v)}
-                               className="flex-1 py-3 bg-white/5 border border-white/5 rounded-xl text-[8px] font-black italic hover:bg-white/10 hover:border-white/10 transition-all"
-                             >
-                               {v === 'MAX' ? 'TODO' : `$${v}`}
-                             </button>
-                           ))}
-                        </div>
-                      </div>
-
-                      <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-3xl p-8 space-y-4">
-                        <div className="flex items-center justify-between text-[10px] font-black text-white/40 uppercase italic tracking-[0.2em]">
-                           <span>Probabilidad Final</span>
-                           <span className="text-white text-lg">x{totalOdds.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                           <span className="text-xs font-black text-cyan-500 uppercase italic tracking-widest">RETORNO ESTIMADO</span>
-                           <span className="text-3xl font-black text-cyan-500 italic tabular-nums">${potentialWin.toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      <button 
-                        onClick={handlePlaceBet}
-                        disabled={isPlacingBet || parseFloat(betAmount) < 2000 || parseFloat(betAmount) > balance}
-                        className="w-full bg-cyan-500 text-black py-7 rounded-[2rem] text-sm font-black italic uppercase tracking-[0.6em] shadow-[0_0_40px_rgba(6,182,212,0.3)] hover:bg-white hover:shadow-[0_0_60px_rgba(6,182,212,0.5)] transition-all disabled:opacity-50 disabled:grayscale cursor-pointer group/betbtn"
-                      >
-                         <span className="group-hover/betbtn:scale-110 block transition-transform">
-                           {isPlacingBet ? 'PROCESANDO...' : 'CONFIRMAR JUGADA'}
-                         </span>
-                      </button>
-                   </motion.div>
-                 )}
-               </div>
+        {/* User Stats Card */}
+        <div className="lg:col-span-4 bg-zinc-900 border border-zinc-850 rounded-[2.5rem] p-8 md:p-10 shadow-2xl flex flex-col justify-between group overflow-hidden relative">
+          <div className="absolute inset-0 bg-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+          
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-black text-orange-500 uppercase tracking-[0.4em] italic">MARCADOR PERSONAL</span>
+              <Award className="text-zinc-700 group-hover:text-orange-500 transition-colors" size={20} strokeWidth={2.5} />
+            </div>
+            
+            <div className="space-y-1">
+              <span className="text-5xl md:text-6xl font-black text-white italic tabular-nums tracking-tighter">
+                {profile?.points || 0} <span className="text-xl text-orange-500">PTS</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-ping" />
+                <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest italic col-span-2">
+                  {profile?.username || 'USUARIO CONECTADO'}
+                </span>
+              </div>
             </div>
 
-            <p className="mt-12 text-[10px] text-white/10 text-center italic font-black uppercase tracking-[0.5em]">
-              * TRANSMISIÓN SEGURA • ENCRIPTADO AES-256 • FIFA 2026
+            <div className="grid grid-cols-2 gap-4 border-t border-zinc-800/80 pt-6">
+              <div className="space-y-1">
+                <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest italic">Pronósticos</span>
+                <p className="text-xl font-black text-white italic tabular-nums">{predictionStats.count}</p>
+              </div>
+              <div className="space-y-1 text-right">
+                <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest italic">Aciertos Exactos</span>
+                <p className="text-xl font-black text-orange-500 italic tabular-nums">🏆 {predictionStats.exactMatches}</p>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-805 border-zinc-800/50 flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest italic col-span-2">Acierto Ganador (1 pt)</span>
+                <span className="text-xs font-black text-white italic">{predictionStats.outcomeMatches} partidos</span>
+              </div>
+              <div className="w-12 h-1.5 bg-zinc-850 rounded-full overflow-hidden">
+                <div 
+                  className="bg-orange-500 h-full rounded-full" 
+                  style={{ width: `${predictionStats.count > 0 ? (predictionStats.outcomeMatches / predictionStats.count) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 p-4 bg-orange-500/5 border border-orange-500/10 rounded-2xl flex items-center gap-3">
+            <Info size={16} className="text-orange-500 shrink-0" />
+            <p className="text-[9px] font-bold text-zinc-400 leading-relaxed uppercase tracking-widest italic">
+              Recuerda guardar cada pronóstico presionando el botón "Guardar" de cada partido antes que comience el juego.
             </p>
           </div>
         </div>
       </div>
+
+      {/* Administrator Control Center */}
+      {isAdmin && (
+        <div className="bg-zinc-950 border-2 border-red-500/30 p-8 rounded-[2.5rem] relative overflow-hidden space-y-6">
+          <div className="absolute top-0 right-0 w-[400px] h-[200px] bg-red-500/5 blur-[80px] rounded-full pointer-events-none" />
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10 font-sans">
+            <div className="space-y-2">
+              <span className="px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full text-[9px] font-black tracking-widest text-red-500 uppercase italic">
+                SISTEMA ADMIN DE CONTROL PRODE
+              </span>
+              <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">
+                Mesa de Pruebas & Sincronización Real
+              </h2>
+              <p className="max-w-2xl text-[11px] font-bold text-zinc-400 uppercase tracking-wider leading-relaxed italic">
+                Hola <span className="text-red-400">{userEmail}</span>. Como administrador, puedes sincronizar fixtures en tiempo real y limpiar registros viejos (como el equipo Chile que ha sido reemplazado por Panamá).
+              </p>
+            </div>
+            
+            <div className="flex flex-wrap gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={handleReseedDB}
+                disabled={isInitializingDB}
+                className="px-6 py-3.5 bg-red-550 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-black uppercase italic tracking-widest text-[9px] rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+              >
+                {isInitializingDB ? <Loader2 size={12} className="animate-spin" /> : '⚽'}
+                Reiniciar & Sembrar con Panamá
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleSyncMatches}
+                disabled={isSyncing}
+                className="px-6 py-3.5 bg-zinc-850 hover:bg-zinc-800 disabled:opacity-50 border border-zinc-700/50 text-white font-black uppercase italic tracking-widest text-[9px] rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Clock size={12} className={isSyncing ? 'animate-spin' : ''} />
+                {isSyncing ? 'Sincronizando...' : 'Actualizar Fixture API'}
+              </button>
+            </div>
+          </div>
+          
+          <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-2xl flex items-center gap-3">
+            <Info size={16} className="text-red-400 shrink-0" />
+            <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest italic leading-normal">
+              ⚡ Consejo de pruebas: Puedes simular la finalización de cualquier partido abajo haciendo clic en "Simular Resultado Real (Admin)" para otorgar puntos al instante y ver cómo se actualiza la tabla de posiciones.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Search Bar / Filter Panel */}
+      {activeTab !== 'COMMUNITY' && (
+        <div className="relative group">
+          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-orange-500 transition-colors" size={20} />
+          <input 
+            type="text"
+            placeholder="Buscar por equipo, grupo o etapa..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-5 pl-16 pr-6 text-xs font-bold italic focus:border-orange-500/20 outline-none transition-all placeholder:text-zinc-600 uppercase tracking-[0.2em] text-white"
+          />
+        </div>
+      )}
+
+      {/* Rules Banner Grid */}
+      {activeTab !== 'COMMUNITY' && (
+        <div className="bg-zinc-900/50 border border-zinc-850 p-6 md:p-8 rounded-[2rem] gap-6 grid md:grid-cols-3 align-middle text-zinc-400">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 bg-orange-500/10 border border-orange-500/30 rounded-xl flex items-center justify-center text-orange-500 shrink-0">
+              <span className="font-extrabold italic text-sm">3pt</span>
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-white uppercase italic tracking-wider">MARCADOR EXACTO</h4>
+              <p className="text-[10px] text-zinc-500 font-bold mt-1 uppercase tracking-wider italic">Predices el puntaje exacto de ambos equipos de forma perfecta.</p>
+            </div>
+          </div>
+          
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 bg-zinc-800/80 border border-zinc-700/50 rounded-xl flex items-center justify-center text-zinc-400 shrink-0">
+              <span className="font-extrabold italic text-sm">1pt</span>
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-white uppercase italic tracking-wider">RESULTADO/GANADOR</h4>
+              <p className="text-[10px] text-zinc-500 font-bold mt-1 uppercase tracking-wider italic">Aciertas quién gana o si hay empate, pero no el resultado exacto.</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 bg-zinc-800/40 border border-transparent rounded-xl flex items-center justify-center text-zinc-650 shrink-0">
+              <span className="font-extrabold italic text-sm">0pt</span>
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-white/50 uppercase italic tracking-wider">OTRO CASO</h4>
+              <p className="text-[10px] text-zinc-600 font-bold mt-1 uppercase tracking-wider italic">Si no aciertas ni el ganador ni el marcador final del partido.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main List View */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'COMMUNITY' ? (
+          <motion.div
+            key="community-wall"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className="pt-2"
+          >
+            <CommunityBoard />
+          </motion.div>
+        ) : (
+          <div className="grid lg:grid-cols-12 gap-8 items-start">
+            {/* Left Column: Interactive Match Cards */}
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="lg:col-span-8 space-y-12"
+            >
+              {Object.keys(groupedMatches).length > 0 ? (
+                (Object.entries(groupedMatches) as [string, Match[]][]).map(([date, dateMatches]) => (
+                  <div key={date} className="space-y-6">
+                    {/* Date Heading Indicator */}
+                    <div className="flex items-center gap-4 px-2">
+                      <div className="w-1.5 h-8 bg-orange-500 rounded-full" />
+                      <div>
+                        <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">{date}</h3>
+                        <p className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.3em] italic">Día de competición</p>
+                      </div>
+                    </div>
+
+                    {/* Matches Cards List */}
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {dateMatches.map(match => {
+                        const prediction = userPredictions[match.id] || { home_score: 0, away_score: 0, hasPrediction: false };
+                        const isLocked = match.status !== 'pending';
+                        const isUnsaved = hasChanges(match.id);
+                        
+                        return (
+                          <div 
+                            key={match.id}
+                            className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 relative overflow-hidden transition-all flex flex-col justify-between hover:border-zinc-750 gap-6"
+                          >
+                            {/* Top Info Banner inside Card */}
+                            <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3">
+                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest italic bg-zinc-800 px-3 py-1.5 rounded-lg">
+                                {match.phase === 'group' ? `GRUPO ${cleanGroupName(match.group_name)}` : match.phase.toUpperCase()}
+                              </span>
+                              <div className="flex items-center gap-2 text-zinc-500 text-[10px] font-black italic">
+                                <Clock size={12} className="text-orange-500/70" />
+                                <span>{match.start_at ? new Date(match.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Hora TBD'}</span>
+                              </div>
+                            </div>
+
+                            {/* Teams with Interactive Prediction Dial */}
+                            <div className="flex items-center justify-between relative py-2">
+                              {/* Home Team */}
+                              <div className="flex flex-col items-center gap-3 w-[35%] text-center">
+                                <div className="w-16 h-11 rounded-lg overflow-hidden border border-zinc-800 bg-black shadow-lg">
+                                  {match.homeTeam?.flag_url || match.home_team?.flag_url ? (
+                                    <img 
+                                      src={match.homeTeam?.flag_url || match.home_team?.flag_url} 
+                                      alt={match.homeTeam?.name || match.home_team?.name} 
+                                      className="w-full h-full object-cover" 
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-xs font-black text-zinc-600">TBD</div>
+                                  )}
+                                </div>
+                                <span className="text-sm font-black italic uppercase tracking-tight text-white line-clamp-1">
+                                  {match.homeTeam?.name || match.home_team?.name || 'TBD'}
+                                </span>
+                              </div>
+
+                              {/* Center Predictions Editor */}
+                              <div className="flex flex-col items-center justify-center w-[30%]">
+                                {isLocked ? (
+                                  /* Locked view: results are official, prediction is locked */
+                                  <div className="space-y-4 text-center">
+                                    {/* Score visualization */}
+                                    <div className="flex items-center justify-center gap-3 font-mono">
+                                      <div className="w-10 h-10 bg-zinc-950/60 border border-zinc-850 rounded-xl flex items-center justify-center font-black text-zinc-400 text-sm">
+                                        {prediction.hasPrediction ? prediction.home_score : '-'}
+                                      </div>
+                                      <span className="text-[10px] text-zinc-700 font-extrabold italic">PRED</span>
+                                      <div className="w-10 h-10 bg-zinc-950/60 border border-zinc-850 rounded-xl flex items-center justify-center font-black text-zinc-400 text-sm">
+                                        {prediction.hasPrediction ? prediction.away_score : '-'}
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Real score indicator */}
+                                    {match.status === 'finished' ? (
+                                      <div className="space-y-2">
+                                        <p className="text-[8px] font-black text-zinc-550 uppercase tracking-widest italic">REAL</p>
+                                        <div className="px-3 py-1 bg-zinc-950 text-white font-black text-xs rounded-lg border border-zinc-850">
+                                          {match.home_score} - {match.away_score}
+                                        </div>
+                                        
+                                        {/* Point Tag Badge */}
+                                        <div className="pt-1">
+                                          {prediction.points_earned === 3 ? (
+                                            <span className="px-2 py-1.5 bg-orange-500/10 border border-orange-500/30 text-[8px] font-black tracking-widest text-orange-500 rounded-lg flex items-center justify-center gap-1">
+                                              🏆 PERFECTO (+3)
+                                            </span>
+                                          ) : prediction.points_earned === 1 ? (
+                                            <span className="px-2 py-1.5 bg-zinc-800 border border-zinc-750 text-[8px] font-black tracking-widest text-zinc-400 rounded-lg flex items-center justify-center gap-1">
+                                              ✓ GANADOR (+1)
+                                            </span>
+                                          ) : (
+                                            <span className="px-2 py-1.5 bg-zinc-900 border border-transparent text-[8px] font-bold tracking-widest text-zinc-600 rounded-lg flex items-center justify-center">
+                                              ❌ 0 PTS
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="px-2 py-1 bg-zinc-800 text-[8px] text-zinc-400 font-black tracking-widest rounded-lg flex items-center justify-center gap-1">
+                                        <Lock size={10} /> JUGANDO
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  /* Interactive dial editor */
+                                  <div className="space-y-4">
+                                    <div className="flex items-center gap-3">
+                                      {/* Home Prediction Selector */}
+                                      <div className="flex flex-col items-center gap-1">
+                                        <button 
+                                          type="button"
+                                          onClick={() => handleScoreChange(match.id, 'home', 'increment')}
+                                          className="p-1 bg-zinc-800 hover:bg-zinc-700 hover:text-white rounded-lg text-zinc-400 transition-colors"
+                                        >
+                                          <Plus size={12} strokeWidth={3} />
+                                        </button>
+                                        <div className="w-10 h-10 bg-zinc-950 border border-zinc-850 rounded-xl flex items-center justify-center font-black text-xl italic text-white select-none">
+                                          {prediction.home_score}
+                                        </div>
+                                        <button 
+                                          type="button"
+                                          disabled={prediction.home_score <= 0}
+                                          onClick={() => handleScoreChange(match.id, 'home', 'decrement')}
+                                          className="p-1 bg-zinc-800 disabled:opacity-30 hover:bg-zinc-700 hover:text-white rounded-lg text-zinc-400 transition-colors"
+                                        >
+                                          <Minus size={12} strokeWidth={3} />
+                                        </button>
+                                      </div>
+
+                                      <span className="text-zinc-700 font-black italic text-sm select-none">VS</span>
+
+                                      {/* Away Prediction Selector */}
+                                      <div className="flex flex-col items-center gap-1">
+                                        <button 
+                                          type="button"
+                                          onClick={() => handleScoreChange(match.id, 'away', 'increment')}
+                                          className="p-1 bg-zinc-800 hover:bg-zinc-700 hover:text-white rounded-lg text-zinc-400 transition-colors"
+                                        >
+                                          <Plus size={12} strokeWidth={3} />
+                                        </button>
+                                        <div className="w-10 h-10 bg-zinc-950 border border-zinc-850 rounded-xl flex items-center justify-center font-black text-xl italic text-white select-none">
+                                          {prediction.away_score}
+                                        </div>
+                                        <button 
+                                          type="button"
+                                          disabled={prediction.away_score <= 0}
+                                          onClick={() => handleScoreChange(match.id, 'away', 'decrement')}
+                                          className="p-1 bg-zinc-800 disabled:opacity-30 hover:bg-zinc-700 hover:text-white rounded-lg text-zinc-400 transition-colors"
+                                        >
+                                          <Minus size={12} strokeWidth={3} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Away Team */}
+                              <div className="flex flex-col items-center gap-3 w-[35%] text-center">
+                                <div className="w-16 h-11 rounded-lg overflow-hidden border border-zinc-800 bg-black shadow-lg">
+                                  {match.awayTeam?.flag_url || match.away_team?.flag_url ? (
+                                    <img 
+                                      src={match.awayTeam?.flag_url || match.away_team?.flag_url} 
+                                      alt={match.awayTeam?.name || match.away_team?.name} 
+                                      className="w-full h-full object-cover" 
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-xs font-black text-zinc-650">TBD</div>
+                                  )}
+                                </div>
+                                <span className="text-sm font-black italic uppercase tracking-tight text-white line-clamp-1">
+                                  {match.awayTeam?.name || match.away_team?.name || 'TBD'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Save Trigger Banner under Card */}
+                            {!isLocked && (
+                              <div className="pt-2 border-t border-zinc-800/40">
+                                {isUnsaved ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSavePrediction(match.id)}
+                                    disabled={savingId === match.id}
+                                    className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-black font-black uppercase italic tracking-widest text-[9px] rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                                  >
+                                    {savingId === match.id ? (
+                                      <Loader2 size={12} className="animate-spin" />
+                                    ) : (
+                                      <Save size={12} />
+                                    )}
+                                    Confirmar Pronóstico
+                                  </button>
+                                ) : prediction.hasPrediction ? (
+                                  <div className="py-2.5 bg-zinc-950/40 border border-zinc-850 rounded-xl text-[9px] font-black text-emerald-500 uppercase tracking-widest italic flex items-center justify-center gap-1.5 select-none">
+                                    <CheckCircle2 size={13} strokeWidth={2.5} /> Guardado Exitoso
+                                  </div>
+                                ) : (
+                                  <div className="py-2.5 text-zinc-550 border border-dashed border-zinc-800 rounded-xl text-[8px] font-black uppercase tracking-widest italic flex items-center justify-center select-none">
+                                    Introduce goles y confirma
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {isAdmin && (
+                              <div className="pt-2 border-t border-zinc-800/40">
+                                <button
+                                  type="button"
+                                  onClick={() => setResolveModalMatch(match)}
+                                  className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-black uppercase italic tracking-widest text-[8px] rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                                >
+                                  ⚡ Simular Resultado Real (Admin)
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-24 bg-zinc-900 border border-zinc-850 rounded-[2.5rem] space-y-4">
+                  <p className="text-zinc-500 font-black uppercase italic tracking-widest text-xs">No se encontraron partidos</p>
+                  <p className="text-[10px] text-zinc-650 font-bold uppercase tracking-widest italic">Intenta con otro filtro de búsqueda</p>
+                </div>
+              )}
+            </motion.div>
+
+            {/* Right Column: User's confirmed predictions */}
+            <div className="lg:col-span-4 bg-zinc-900 border border-zinc-850 rounded-[2.5rem] p-6 lg:sticky lg:top-24 space-y-6">
+              <div className="flex items-center justify-between border-b border-zinc-800/60 pb-4">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-black italic uppercase tracking-tighter text-white">MIS APUESTAS / PRODE</h3>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500 italic">Historial de pronósticos</p>
+                </div>
+                <span className="px-2.5 py-1 bg-orange-500/10 border border-orange-550/25 rounded-lg text-orange-500 text-[10px] font-black italic">
+                  {savedPredictionsList.length} Jugados
+                </span>
+              </div>
+
+              {savedPredictionsList.length === 0 ? (
+                <div className="text-center py-10 space-y-2 border border-dashed border-zinc-800 rounded-2xl">
+                  <p className="text-zinc-650 text-[10px] font-black uppercase tracking-widest italic">Aún no has guardado apuestas</p>
+                  <p className="text-[8px] text-zinc-700 font-bold uppercase tracking-widest leading-normal italic px-4">
+                    Selecciona los goles en los partidos de la izquierda y haz clic en "Confirmar Pronóstico"
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[550px] overflow-y-auto pr-1 scrollbar-none">
+                  {savedPredictionsList.map(({ match, prediction }) => {
+                    const isFinished = match.status === 'finished';
+                    const homeName = match.homeTeam?.name || match.home_team?.name || 'TBD';
+                    const awayName = match.awayTeam?.name || match.away_team?.name || 'TBD';
+                    const homeFlag = match.homeTeam?.flag_url || match.home_team?.flag_url;
+                    const awayFlag = match.awayTeam?.flag_url || match.away_team?.flag_url;
+
+                    return (
+                      <div 
+                        key={`sidebar-${match.id}`}
+                        className="bg-zinc-950/40 hover:bg-zinc-950/90 border border-zinc-850 rounded-2xl p-4 transition-all flex flex-col gap-2.5 group"
+                      >
+                        {/* Entry header */}
+                        <div className="flex items-center justify-between text-[8px] font-bold text-zinc-550 uppercase tracking-widest">
+                          <span className="truncate max-w-[120px] italic">
+                            {match.phase === 'group' ? `Grupo ${cleanGroupName(match.group_name)}` : match.phase}
+                          </span>
+                          {isFinished ? (
+                            <span className={`px-1.5 py-0.5 rounded ${
+                              prediction.points_earned === 3 
+                                ? 'bg-orange-500/15 border border-orange-500/30 text-orange-500 font-extrabold' 
+                                : prediction.points_earned === 1 
+                                ? 'bg-zinc-800 border border-zinc-750 text-zinc-400 font-semibold' 
+                                : 'bg-red-500/10 text-red-500'
+                            }`}>
+                              {prediction.points_earned === 3 ? '🏆 PERFECTO' : prediction.points_earned === 1 ? '✨ GANADOR' : '❌ 0 PTS'}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-emerald-500 font-black">
+                              <span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" /> Confirmado
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Teams predictions display */}
+                        <div className="flex items-center justify-between">
+                          {/* Home team mini indicator */}
+                          <div className="flex items-center gap-2 w-[42%]">
+                            <div className="w-6 h-4 rounded overflow-hidden border border-zinc-850 shrink-0 bg-black">
+                              {homeFlag ? (
+                                <img src={homeFlag} alt={homeName} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full bg-zinc-900" />
+                              )}
+                            </div>
+                            <span className="text-[10px] font-black text-white italic truncate tracking-tight">{match.homeTeam?.code || match.home_team?.code || homeName}</span>
+                          </div>
+
+                          {/* Prediction scores badge in the center */}
+                          <div className="px-2.5 py-1 bg-zinc-900 border border-zinc-850 text-center font-mono font-black italic rounded-lg text-[11px] text-orange-500 w-[16%]">
+                            {prediction.home_score}-{prediction.away_score}
+                          </div>
+
+                          {/* Away team mini indicator */}
+                          <div className="flex items-center gap-2 justify-end w-[42%] text-right font-bold">
+                            <span className="text-[10px] font-black text-white italic truncate tracking-tight">{match.awayTeam?.code || match.away_team?.code || awayName}</span>
+                            <div className="w-6 h-4 rounded overflow-hidden border border-zinc-850 shrink-0 bg-black">
+                              {awayFlag ? (
+                                <img src={awayFlag} alt={awayName} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full bg-zinc-900" />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Real match scores if finished spacer */}
+                        {isFinished && (
+                          <div className="pt-2 border-t border-zinc-905 flex items-center justify-between text-[8px] font-bold text-zinc-550 uppercase tracking-widest italic">
+                            <span>Resultado Real:</span>
+                            <span className="text-white font-black">{match.home_score} - {match.away_score}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+      
+      <ResolveMatchModal
+        isOpen={!!resolveModalMatch}
+        onClose={() => setResolveModalMatch(null)}
+        onConfirm={(homeScore, awayScore) => {
+          if (resolveModalMatch) {
+            handleResolveMatch(resolveModalMatch.id, homeScore, awayScore);
+          }
+        }}
+        match={resolveModalMatch}
+      />
     </div>
   );
 };

@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Match, Team } from '@/types';
 import { toast } from 'react-hot-toast';
-import { ShieldAlert, Database, Plus, Save } from 'lucide-react';
+import { ShieldAlert, Database, Plus } from 'lucide-react';
+import { ResolveMatchModal } from '@/components/ResolveMatchModal';
 
 export default function Admin() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resolveModalMatch, setResolveModalMatch] = useState<Match | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -25,7 +27,11 @@ export default function Admin() {
     try {
       const response = await fetch('/api/admin/resolve-match', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-supabase-url': import.meta.env.VITE_SUPABASE_URL || '',
+          'x-supabase-key': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        },
         body: JSON.stringify({ matchId, homeScore, awayScore }),
       });
       const data = await response.json();
@@ -83,20 +89,16 @@ export default function Admin() {
 
                     <div className="flex items-center gap-2">
                        {match.status === 'finished' ? (
-                         <div className="px-4 py-2 bg-zinc-800 rounded-xl border border-zinc-700 text-white font-black italic">
-                           {match.home_score} - {match.away_score}
-                         </div>
+                          <div className="px-4 py-2 bg-zinc-800 rounded-xl border border-zinc-700 text-white font-black italic">
+                            {match.home_score} - {match.away_score}
+                          </div>
                        ) : (
-                         <button 
-                           onClick={() => {
-                             const h = prompt('Goles Local:');
-                             const a = prompt('Goles Visitante:');
-                             if (h !== null && a !== null) resolveMatch(match.id, parseInt(h), parseInt(a));
-                           }}
-                           className="px-4 py-2 bg-orange-500 text-black text-xs font-black uppercase italic rounded-xl hover:bg-orange-400 transition-all"
-                         >
-                           Finalizar
-                         </button>
+                          <button 
+                            onClick={() => setResolveModalMatch(match)}
+                            className="px-4 py-2 bg-orange-500 text-black text-xs font-black uppercase italic rounded-xl hover:bg-orange-400 transition-all cursor-pointer"
+                          >
+                            Finalizar
+                          </button>
                        )}
                     </div>
                  </div>
@@ -121,6 +123,17 @@ export default function Admin() {
            </div>
         </div>
       </div>
+
+      <ResolveMatchModal 
+        isOpen={!!resolveModalMatch}
+        onClose={() => setResolveModalMatch(null)}
+        onConfirm={(homeScore, awayScore) => {
+          if (resolveModalMatch) {
+            resolveMatch(resolveModalMatch.id, homeScore, awayScore);
+          }
+        }}
+        match={resolveModalMatch}
+      />
     </div>
   );
 }
