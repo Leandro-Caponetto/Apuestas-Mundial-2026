@@ -24,7 +24,7 @@ import { toast } from 'react-hot-toast';
 import { formatDate } from '@/lib/utils';
 import { CommunityBoard } from './CommunityBoard';
 import { WORLD_CUP_TEAMS } from '@/lib/constants';
-import { MOCK_MATCHES } from '@/lib/mockData';
+import { MOCK_MATCHES, getInitialBracket } from '@/lib/mockData';
 import { ResolveMatchModal } from './ResolveMatchModal';
 
 const cleanGroupName = (group: string | null | undefined): string => {
@@ -148,73 +148,7 @@ export const BettingZone: React.FC = () => {
     setIsInitializingDB(true);
     const toastId = toast.loading('Re-sembrando base de datos con Panamá (Removiendo Chile)...');
     
-    const initialBracket = [
-      {
-        name: 'R32',
-        matches: Array(16).fill(null).map((_, i) => ({
-          id: `r32-${i}`,
-          homeTeam: WORLD_CUP_TEAMS[i * 2] || null,
-          awayTeam: WORLD_CUP_TEAMS[i * 2 + 1] || null,
-          status: 'pending' as const,
-          date: i < 4 ? '28 JUN' : i < 8 ? '29 JUN' : i < 12 ? '30 JUN' : '01 JUL',
-          location: ['LOS ANGELES', 'NEW YORK', 'DALLAS', 'HOUSTON', 'MEXICO CITY', 'TORONTO', 'BOSTON', 'MIAMI'][i % 8],
-          homeScore: '',
-          awayScore: ''
-        }))
-      },
-      {
-        name: 'R16',
-        matches: Array(8).fill(null).map((_, i) => ({
-          id: `r16-${i}`,
-          homeTeam: null,
-          awayTeam: null,
-          status: 'pending' as const,
-          date: i < 4 ? '04 JUL' : '05 JUL',
-          location: ['PHILADELPHIA', 'HOUSTON', 'NEW YORK', 'DALLAS'][i % 4],
-          homeScore: '',
-          awayScore: ''
-        }))
-      },
-      {
-        name: 'CUARTOS',
-        matches: Array(4).fill(null).map((_, i) => ({
-          id: `qf-${i}`,
-          homeTeam: null,
-          awayTeam: null,
-          status: 'pending' as const,
-          date: i < 2 ? '09 JUL' : '10 JUL',
-          location: ['BOSTON', 'LOS ANGELES', 'MIAMI', 'KANSAS CITY'][i],
-          homeScore: '',
-          awayScore: ''
-        }))
-      },
-      {
-        name: 'SEMIFINAL',
-        matches: Array(2).fill(null).map((_, i) => ({
-          id: `sf-${i}`,
-          homeTeam: null,
-          awayTeam: null,
-          status: 'pending' as const,
-          date: i === 0 ? '14 JUL' : '15 JUL',
-          location: i === 0 ? 'DALLAS' : 'ATLANTA',
-          homeScore: '',
-          awayScore: ''
-        }))
-      },
-      {
-        name: 'FINAL',
-        matches: [{
-          id: 'final',
-          homeTeam: null,
-          awayTeam: null,
-          status: 'pending' as const,
-          date: '19 JUL',
-          location: 'NEW YORK / NEW JERSEY',
-          homeScore: '',
-          awayScore: ''
-        }]
-      }
-    ];
+    const initialBracket = getInitialBracket();
 
     try {
       await dbService.seedInitialData(WORLD_CUP_TEAMS, MOCK_MATCHES, initialBracket);
@@ -409,7 +343,6 @@ export const BettingZone: React.FC = () => {
     });
     return groups;
   }, [filteredMatches]);
-  console.log('Grouped Matches:', groupedMatches);
 
   // User's active predictions list sorted chronologically
   const savedPredictionsList = useMemo(() => {

@@ -5,6 +5,8 @@ import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { WORLD_CUP_TEAMS } from './src/lib/constants';
+import { MOCK_MATCHES } from './src/lib/mockData';
 
 dotenv.config();
 
@@ -302,25 +304,66 @@ app.post('/api/sync-matches', async (req, res) => {
     console.log('Syncing with API-Football (RapidAPI)...');
     const key = process.env.RAPIDAPI_FOOTBALL_KEY || '4c01bef4c4msh80d107a10f214afp1173e6jsn12be3ea56581';
     
-    // Fetch World Cup 2022 fixtures (historical real data of actual matches)
-    const response = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?league=1&season=2022', {
+    let fixtures: any[] = [];
+    let sourceUsed = 'API-Football (RapidAPI) Season 2026';
+
+    console.log('Fetching API-Football Season 2026...');
+    const response = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?league=1&season=2026', {
       headers: {
         'x-rapidapi-key': key,
         'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
       }
     });
-
-    if (!response.ok) {
-      throw new Error(`API-Football responded with ${response.status}: ${response.statusText}`);
+    if (response.ok) {
+      const apiData = await response.json();
+      if (apiData.response && apiData.response.length > 0) {
+        fixtures = apiData.response;
+        console.log(`Successfully fetched ${fixtures.length} matches for World Cup 2026!`);
+      } else {
+        console.log('No matches returned for World Cup 2026, or plan subscription restriction. Throwing to fallback...');
+        throw new Error('Empty 2026 response');
+      }
+    } else {
+      throw new Error(`2026 fetch responded with status code: ${response.status}`);
     }
 
-    const apiData = await response.json();
-    const fixtures = apiData.response || [];
+    // Attempt to merge any actual live World Cup fixtures if they are playing right now
+    try {
+      console.log('Checking for active live World Cup fixtures (live=all)...');
+      const liveResponse = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?league=1&live=all', {
+        headers: {
+          'x-rapidapi-key': key,
+          'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
+        }
+      });
+      if (liveResponse.ok) {
+        const liveData = await liveResponse.json();
+        const liveMatches = liveData.response || [];
+        if (liveMatches.length > 0) {
+          console.log(`Found ${liveMatches.length} active live World Cup matches! Merging...`);
+          for (const lm of liveMatches) {
+            const index = fixtures.findIndex(f => f.fixture.id === lm.fixture.id);
+            if (index !== -1) {
+              fixtures[index] = lm;
+            } else {
+              fixtures.push(lm);
+            }
+          }
+        }
+      }
+    } catch (liveErr: any) {
+      console.warn('Could not check for active live World Cup matches:', liveErr.message);
+    }
 
     const { data: teams, error: teamsErr } = await supabaseAdmin.from('teams').select('*');
     if (teamsErr) throw teamsErr;
 
     const teamMap = new Map(teams.map((t: any) => [t.code, t.id]));
+
+    // Securely wipe any mismatching matches (like left over 2022 fallback, or procedural fakes)
+    console.log('Wiping out matches database for complete synchrony with the official API feed...');
+    await supabaseAdmin.from('predictions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabaseAdmin.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
     for (const item of fixtures) {
       const apiHomeName = item.teams.home.name.toLowerCase();
@@ -348,135 +391,65 @@ app.post('/api/sync-matches', async (req, res) => {
         group_name: cleanGroupName(getGroupNameFromRound(item.league.round))
       };
 
-      // Check if match already exists in database
-      const { data: existing } = await supabaseAdmin
-        .from('matches')
-        .select('id')
-        .eq('home_team_id', homeId)
-        .eq('away_team_id', awayId)
-        .eq('start_at', item.fixture.date)
-        .maybeSingle();
-
-      if (existing) {
-        await supabaseAdmin.from('matches').update(matchData).eq('id', existing.id);
-        results.push({ id: existing.id, status: 'updated' });
-      } else {
-        const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
-        if (inserted) results.push({ id: inserted[0].id, status: 'inserted' });
-      }
+      const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
+      if (inserted) results.push({ id: inserted[0].id, status: 'inserted' });
     }
 
-    res.json({ success: true, source: 'API-Football (RapidAPI)', count: results.length, details: results });
+    res.json({ success: true, source: sourceUsed, count: results.length, details: results });
   } catch (error: any) {
-    console.warn('API-Football sync failed, falling back to local High-Fidelity 2026 World Cup Fixture Generator:', error.message);
+    console.warn('API-Football sync failed, falling back to local High-Fidelity 2026 World Cup Curated Fixture Seeder:', error.message);
     
     try {
-      const groupDates: Record<string, string[]> = {
-        'A': ['2026-06-11T18:00:00Z', '2026-06-11T21:00:00Z', '2026-06-15T18:00:00Z', '2026-06-15T21:00:00Z', '2026-06-19T18:00:00Z', '2026-06-19T21:00:00Z'],
-        'B': ['2026-06-11T19:00:00Z', '2026-06-11T22:00:00Z', '2026-06-15T19:00:00Z', '2026-06-15T22:00:00Z', '2026-06-19T19:00:00Z', '2026-06-19T22:00:00Z'],
-        'C': ['2026-06-12T15:00:00Z', '2026-06-12T18:00:00Z', '2026-06-16T15:00:00Z', '2026-06-16T18:00:00Z', '2026-06-20T15:00:00Z', '2026-06-20T18:00:00Z'],
-        'D': ['2026-06-12T19:00:00Z', '2026-06-12T22:00:00Z', '2026-06-16T19:00:00Z', '2026-06-16T22:00:00Z', '2026-06-20T19:00:00Z', '2026-06-20T22:00:00Z'],
-        'E': ['2026-06-13T15:00:00Z', '2026-06-13T18:00:00Z', '2026-06-17T15:00:00Z', '2026-06-17T18:00:00Z', '2026-06-21T15:00:00Z', '2026-06-21T18:00:00Z'],
-        'F': ['2026-06-13T19:00:00Z', '2026-06-13T22:00:00Z', '2026-06-17T19:00:00Z', '2026-06-17T22:00:00Z', '2026-06-21T19:00:00Z', '2026-06-21T22:00:00Z'],
-        'G': ['2026-06-14T15:00:00Z', '2026-06-14T18:00:00Z', '2026-06-18T15:00:00Z', '2026-06-18T18:00:00Z', '2026-06-22T15:00:00Z', '2026-06-22T18:00:00Z'],
-        'H': ['2026-06-14T19:00:00Z', '2026-06-14T22:00:00Z', '2026-06-18T19:00:00Z', '2026-06-18T22:00:00Z', '2026-06-22T19:00:00Z', '2026-06-22T22:00:00Z'],
-        'I': ['2026-06-15T15:00:00Z', '2026-06-15T18:00:00Z', '2026-06-19T15:00:00Z', '2026-06-19T18:00:00Z', '2026-06-23T15:00:00Z', '2026-06-23T18:00:00Z'],
-        'J': ['2026-06-15T19:00:00Z', '2026-06-15T22:00:00Z', '2026-06-19T19:00:00Z', '2026-06-19T22:00:00Z', '2026-06-23T19:00:00Z', '2026-06-23T22:00:00Z'],
-        'K': ['2026-06-16T15:00:00Z', '2026-06-16T18:00:00Z', '2026-06-20T15:00:00Z', '2026-06-20T18:00:00Z', '2026-06-24T15:00:00Z', '2026-06-24T18:00:00Z'],
-        'L': ['2026-06-16T19:00:00Z', '2026-06-16T22:00:00Z', '2026-06-20T19:00:00Z', '2026-06-20T22:00:00Z', '2026-06-24T19:00:00Z', '2026-06-24T22:00:00Z']
-      };
-
       const { data: teams, error: teamsErr } = await supabaseAdmin.from('teams').select('*');
       if (teamsErr) throw teamsErr;
 
+      const teamMap = new Map(teams.map((t: any) => [t.code.toUpperCase(), t.id]));
       const localResults = [];
-      const groups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
-      
-      for (const grp of groups) {
-        const grpTeams = teams.filter((t: any) => t.group_name === grp);
-        if (grpTeams.length < 2) continue;
-        
-        const groupMatches = [];
-        if (grpTeams.length === 4) {
-          groupMatches.push({ home: grpTeams[0], away: grpTeams[1], dateIndex: 0 });
-          groupMatches.push({ home: grpTeams[2], away: grpTeams[3], dateIndex: 1 });
-          
-          groupMatches.push({ home: grpTeams[0], away: grpTeams[2], dateIndex: 2 });
-          groupMatches.push({ home: grpTeams[1], away: grpTeams[3], dateIndex: 3 });
-          
-          groupMatches.push({ home: grpTeams[0], away: grpTeams[3], dateIndex: 4 });
-          groupMatches.push({ home: grpTeams[1], away: grpTeams[2], dateIndex: 5 });
-        } else {
-          for (let i = 0; i < grpTeams.length; i++) {
-            for (let j = i + 1; j < grpTeams.length; j++) {
-              groupMatches.push({ home: grpTeams[i], away: grpTeams[j], dateIndex: (i + j) % 6 });
-            }
-          }
+
+      // Clean existing matches (which might be the wrong 2022 season matches!)
+      console.log('Wiping database matches to load high-fidelity curated 2026 World Cup opening matches...');
+      await supabaseAdmin.from('predictions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabaseAdmin.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      for (const m of MOCK_MATCHES) {
+        const homeCode = (m.home_team?.code || m.home_team_id || '').toUpperCase();
+        const awayCode = (m.away_team?.code || m.away_team_id || '').toUpperCase();
+
+        const homeId = teamMap.get(homeCode);
+        const awayId = teamMap.get(awayCode);
+
+        if (!homeId || !awayId) {
+          console.warn(`Fallback Mapping: Skipped match between [${homeCode}] and [${awayCode}] due to missing team configuration.`);
+          continue;
         }
-        
-        const dates = groupDates[grp] || [
-          '2026-06-11T18:00:00Z', '2026-06-11T21:00:00Z',
-          '2026-06-15T18:00:00Z', '2026-06-15T21:00:00Z',
-          '2026-06-19T18:00:00Z', '2026-06-19T21:00:00Z'
-        ];
-        
-        for (const item of groupMatches) {
-          const homeId = item.home.id;
-          const awayId = item.away.id;
-          const matchDate = dates[item.dateIndex] || dates[0];
-          
-          const matchData = {
-            home_team_id: homeId,
-            away_team_id: awayId,
-            start_at: matchDate,
-            phase: 'group',
-            home_score: null,
-            away_score: null,
-            status: 'pending',
-            group_name: grp
-          };
-          
-          const { data: existing } = await supabaseAdmin
-            .from('matches')
-            .select('id')
-            .eq('home_team_id', homeId)
-            .eq('away_team_id', awayId)
-            .eq('phase', 'group')
-            .maybeSingle();
-            
-          if (existing) {
-            const { data: current } = await supabaseAdmin
-              .from('matches')
-              .select('home_score, away_score, status')
-              .eq('id', existing.id)
-              .maybeSingle();
-            if (current && current.status === 'finished') {
-              matchData.home_score = current.home_score;
-              matchData.away_score = current.away_score;
-              matchData.status = current.status;
-            }
-            
-            await supabaseAdmin.from('matches').update(matchData).eq('id', existing.id);
-            localResults.push({ id: existing.id, status: 'updated' });
-          } else {
-            const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
-            if (inserted && inserted.length > 0) {
-              localResults.push({ id: inserted[0].id, status: 'inserted' });
-            }
-          }
+
+        const matchData = {
+          home_team_id: homeId,
+          away_team_id: awayId,
+          start_at: m.start_at || new Date().toISOString(),
+          phase: m.phase || 'group',
+          home_score: m.home_score,
+          away_score: m.away_score,
+          status: m.status || 'pending',
+          group_name: m.group_name
+        };
+
+        const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
+        if (inserted && inserted.length > 0) {
+          localResults.push({ id: inserted[0].id, status: 'inserted' });
         }
       }
       
       res.json({ 
         success: true, 
-        source: 'Generador Local Fixture (Exitoso, caída de API externa gestionada)', 
+        source: 'Calendario Real Curado Mundial 2026 (Local High-Fidelity Fallback)', 
         count: localResults.length, 
         details: localResults,
         wasFallback: true 
       });
     } catch (fallbackError: any) {
-      console.error('Local fallback generator failed:', fallbackError);
-      res.status(500).json({ error: error.message || 'Error en sincronización y fallback de base de datos' });
+      console.error('High-Fidelity 2026 match fallback generation failed:', fallbackError);
+      res.status(500).json({ error: error.message || 'Error executing match seeding fallback' });
     }
   }
 });
@@ -690,6 +663,194 @@ app.post('/api/admin/resolve-match', async (req, res) => {
     res.json({ success: true, predictionsResolved: predictions?.length || 0 });
   } catch (error: any) {
     console.error('Error resolving match:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Route to Create Match manually
+app.post('/api/admin/create-match', async (req, res) => {
+  const supabaseAdmin = getSupabaseAdmin(req);
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Supabase admin not configured' });
+  }
+
+  const { home_team_id, away_team_id, start_at, phase, group_name } = req.body;
+
+  if (!home_team_id || !away_team_id || !start_at || !phase) {
+    return res.status(400).json({ error: 'Missing required parameters: home_team_id, away_team_id, start_at, phase' });
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('matches')
+      .insert([{
+        home_team_id,
+        away_team_id,
+        start_at,
+        phase,
+        group_name,
+        status: 'pending'
+      }])
+      .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)');
+
+    if (error) {
+      console.error('Supabase error inserting match:', error);
+      throw error;
+    }
+
+    res.json({ success: true, match: data ? data[0] : null });
+  } catch (error: any) {
+    console.error('Error creating match:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Route to Delete Match
+app.post('/api/admin/delete-match', async (req, res) => {
+  const supabaseAdmin = getSupabaseAdmin(req);
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Supabase admin not configured' });
+  }
+
+  const { matchId } = req.body;
+  if (!matchId) {
+    return res.status(400).json({ error: 'Missing matchId' });
+  }
+
+  try {
+    // Delete associated predictions first to avoid foreign key violations
+    await supabaseAdmin.from('predictions').delete().eq('match_id', matchId);
+
+    const { error } = await supabaseAdmin
+      .from('matches')
+      .delete()
+      .eq('id', matchId);
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting match:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Route to Update Match details (Teams, Dates, etc)
+app.post('/api/admin/update-match', async (req, res) => {
+  const supabaseAdmin = getSupabaseAdmin(req);
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Supabase admin not configured' });
+  }
+
+  const { matchId, home_team_id, away_team_id, start_at, phase, group_name, status } = req.body;
+
+  if (!matchId) {
+    return res.status(400).json({ error: 'Missing matchId parameter' });
+  }
+
+  try {
+    const updatePayload: any = {};
+    if (home_team_id !== undefined) updatePayload.home_team_id = home_team_id;
+    if (away_team_id !== undefined) updatePayload.away_team_id = away_team_id;
+    if (start_at !== undefined) updatePayload.start_at = start_at;
+    if (phase !== undefined) updatePayload.phase = phase;
+    if (group_name !== undefined) updatePayload.group_name = group_name;
+    if (status !== undefined) updatePayload.status = status;
+
+    const { data, error } = await supabaseAdmin
+      .from('matches')
+      .update(updatePayload)
+      .eq('id', matchId)
+      .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)');
+
+    if (error) {
+      console.error('Supabase error updating match:', error);
+      throw error;
+    }
+
+    res.json({ success: true, match: data ? data[0] : null });
+  } catch (error: any) {
+    console.error('Error updating match:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Route to Reset all fixtures to correct World Cup matches
+app.post('/api/admin/reset-fixtures', async (req, res) => {
+  const supabaseAdmin = getSupabaseAdmin(req);
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Supabase admin not configured' });
+  }
+
+  try {
+    // 1. Clear old predictions and matches
+    await supabaseAdmin.from('predictions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const { error: delMatchesError } = await supabaseAdmin.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (delMatchesError) throw delMatchesError;
+
+    // 2. Register/Upsert all 32 real World Cup 2022 Teams
+    const teamsToUpsert = WORLD_CUP_TEAMS.map(t => ({
+      name: t.name,
+      code: t.code,
+      flag_url: t.flag_url,
+      group_name: t.group_name
+    }));
+
+    const { error: upsertTeamsError } = await supabaseAdmin
+      .from('teams')
+      .upsert(teamsToUpsert, { onConflict: 'code' });
+    if (upsertTeamsError) throw upsertTeamsError;
+
+    // 3. Fetch all teams to map codes to UUIDs
+    const { data: dbTeams, error: teamsError } = await supabaseAdmin.from('teams').select('id, code, name');
+    if (teamsError) throw teamsError;
+
+    // 4. Safely delete any leftover teams from old mock layouts (48-team formats)
+    const validCodes = WORLD_CUP_TEAMS.map(t => t.code.toUpperCase());
+    const extraTeams = (dbTeams || []).filter((t: any) => !validCodes.includes(t.code.toUpperCase()));
+    for (const et of extraTeams) {
+      await supabaseAdmin.from('teams').delete().eq('id', et.id);
+    }
+
+    // 5. Build dynamic code Map
+    const teamMap = new Map();
+    (dbTeams || []).forEach((t: any) => {
+      teamMap.set(t.code.toUpperCase(), t.id);
+    });
+
+    // 6. Map and insert all 48 official group stage matches
+    const insertData = [];
+    for (const match of MOCK_MATCHES) {
+      const homeCode = (match.home_team_id || '').toUpperCase();
+      const awayCode = (match.away_team_id || '').toUpperCase();
+
+      const homeUUID = teamMap.get(homeCode);
+      const awayUUID = teamMap.get(awayCode);
+
+      if (!homeUUID || !awayUUID) {
+        continue;
+      }
+
+      insertData.push({
+        home_team_id: homeUUID,
+        away_team_id: awayUUID,
+        start_at: match.start_at,
+        phase: match.phase || 'group',
+        home_score: match.home_score,
+        away_score: match.away_score,
+        status: match.status || 'pending',
+        group_name: match.group_name
+      });
+    }
+
+    if (insertData.length > 0) {
+      const { error: insertError } = await supabaseAdmin.from('matches').insert(insertData);
+      if (insertError) throw insertError;
+    }
+
+    res.json({ success: true, count: insertData.length });
+  } catch (error: any) {
+    console.error('Error resetting fixtures:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -127,10 +127,14 @@ CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Teams are viewable by everyone" ON teams;
 CREATE POLICY "Teams are viewable by everyone" ON teams FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Teams are editable by everyone" ON teams;
+CREATE POLICY "Teams are editable by everyone" ON teams FOR ALL USING (true);
 
 ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Matches are viewable by everyone" ON matches;
 CREATE POLICY "Matches are viewable by everyone" ON matches FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Matches are editable by everyone" ON matches;
+CREATE POLICY "Matches are editable by everyone" ON matches FOR ALL USING (true);
 
 ALTER TABLE bets ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own bets" ON bets;

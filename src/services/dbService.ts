@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Match, Team, Profile } from '../types';
+import { MOCK_MATCHES } from '../lib/mockData';
 
 export const dbService = {
   // Obtener equipos
@@ -34,7 +35,7 @@ export const dbService = {
   },
 
   async getMatches(): Promise<Match[]> {
-    const { data, error } = await supabase
+    const { data: matches, error } = await supabase
       .from('matches')
       .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)');
     
@@ -42,11 +43,28 @@ export const dbService = {
       console.error('Error fetching matches:', error);
       return [];
     }
-    // Mapear el resultado para que coincida con nuestro tipo Match si es necesario
-    return data.map(m => ({
-      ...m,
+
+    // Sort matches chronologically by start_at
+    const sortedMatches = [...(matches || [])].sort((a, b) => {
+      const dateA = new Date(a.start_at).getTime();
+      const dateB = new Date(b.start_at).getTime();
+      return dateA - dateB;
+    });
+
+    return sortedMatches.map(m => ({
+      id: m.id,
+      home_team_id: m.home_team_id,
+      away_team_id: m.away_team_id,
+      start_at: m.start_at,
+      phase: m.phase || 'group',
+      home_score: m.home_score,
+      away_score: m.away_score,
+      status: m.status || 'pending',
+      group_name: m.group_name,
       homeTeam: m.home_team,
-      awayTeam: m.away_team
+      awayTeam: m.away_team,
+      home_team: m.home_team,
+      away_team: m.away_team
     })) as Match[];
   },
 

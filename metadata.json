@@ -1,6 +1,6 @@
 {
   "name": "Mundial 2026 Predictions",
-  "description": "Modern full-stack system for FIFA World Cup 2026 predictions with points, rankings, and private leagues.",
+  "description": "Plataforma de pronósticos del Mundial (Prode) con asignación de puntos, tablas de posiciones en tiempo real y ligas privadas.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

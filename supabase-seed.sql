@@ -1,26 +1,40 @@
--- Seed Data for Mundial 2026
+-- Seed Data para el Mundial de Catar 2022
 
--- Groups
--- Group A
+-- 1. Insertar las 32 Selecciones Oficiales
 INSERT INTO teams (name, code, group_name, flag_url) VALUES 
-('México', 'MEX', 'A', 'https://flagcdn.com/w160/mx.png'),
-('Estados Unidos', 'USA', 'A', 'https://flagcdn.com/w160/us.png'),
-('Canadá', 'CAN', 'A', 'https://flagcdn.com/w160/ca.png'),
-('Argentina', 'ARG', 'A', 'https://flagcdn.com/w160/ar.png');
-
--- Group B
-INSERT INTO teams (name, code, group_name, flag_url) VALUES 
-('Brasil', 'BRA', 'B', 'https://flagcdn.com/w160/br.png'),
-('Francia', 'FRA', 'B', 'https://flagcdn.com/w160/fr.png'),
-('España', 'ESP', 'B', 'https://flagcdn.com/w160/es.png'),
-('Alemania', 'GER', 'B', 'https://flagcdn.com/w160/de.png');
-
--- Matches
--- Note: You would need to fetch the IDs from the teams table first to insert matches correctly in a real scenario
--- This is a template showing the structure
-
--- INSERT INTO matches (home_team_id, away_team_id, start_at, phase, group_name)
--- VALUES 
--- ((SELECT id FROM teams WHERE code = 'MEX'), (SELECT id FROM teams WHERE code = 'USA'), '2026-06-11 18:00:00+00', 'group', 'A'),
--- ((SELECT id FROM teams WHERE code = 'ARG'), (SELECT id FROM teams WHERE code = 'CAN'), '2026-06-12 15:00:00+00', 'group', 'A'),
--- ((SELECT id FROM teams WHERE code = 'BRA'), (SELECT id FROM teams WHERE code = 'FRA'), '2026-06-13 20:00:00+00', 'group', 'B');
+('Catar', 'QAT', 'A', 'https://flagcdn.com/w160/qa.png'),
+('Ecuador', 'ECU', 'A', 'https://flagcdn.com/w160/ec.png'),
+('Senegal', 'SEN', 'A', 'https://flagcdn.com/w160/sn.png'),
+('Países Bajos', 'NED', 'A', 'https://flagcdn.com/w160/nl.png'),
+('Inglaterra', 'ENG', 'B', 'https://flagcdn.com/w160/gb-eng.png'),
+('Irán', 'IRN', 'B', 'https://flagcdn.com/w160/ir.png'),
+('EE.UU.', 'USA', 'B', 'https://flagcdn.com/w160/us.png'),
+('Gales', 'WAL', 'B', 'https://flagcdn.com/w160/gb-wls.png'),
+('Argentina', 'ARG', 'C', 'https://flagcdn.com/w160/ar.png'),
+('Arabia Saudita', 'KSA', 'C', 'https://flagcdn.com/w160/sa.png'),
+('México', 'MEX', 'C', 'https://flagcdn.com/w160/mx.png'),
+('Polonia', 'POL', 'C', 'https://flagcdn.com/w160/pl.png'),
+('Francia', 'FRA', 'D', 'https://flagcdn.com/w160/fr.png'),
+('Australia', 'AUS', 'D', 'https://flagcdn.com/w160/au.png'),
+('Dinamarca', 'DEN', 'D', 'https://flagcdn.com/w160/dk.png'),
+('Túnez', 'TUN', 'D', 'https://flagcdn.com/w160/tn.png'),
+('España', 'ESP', 'E', 'https://flagcdn.com/w160/es.png'),
+('Costa Rica', 'CRC', 'E', 'https://flagcdn.com/w160/cr.png'),
+('Alemania', 'GER', 'E', 'https://flagcdn.com/w160/de.png'),
+('Japón', 'JPN', 'E', 'https://flagcdn.com/w160/jp.png'),
+('Bélgica', 'BEL', 'F', 'https://flagcdn.com/w160/be.png'),
+('Canadá', 'CAN', 'F', 'https://flagcdn.com/w160/ca.png'),
+('Marruecos', 'MAR', 'F', 'https://flagcdn.com/w160/ma.png'),
+('Croacia', 'CRO', 'F', 'https://flagcdn.com/w160/hr.png'),
+('Brasil', 'BRA', 'G', 'https://flagcdn.com/w160/br.png'),
+('Serbia', 'SRB', 'G', 'https://flagcdn.com/w160/rs.png'),
+('Suiza', 'SUI', 'G', 'https://flagcdn.com/w160/ch.png'),
+('Camerún', 'CMR', 'G', 'https://flagcdn.com/w160/cm.png'),
+('Portugal', 'POR', 'H', 'https://flagcdn.com/w160/pt.png'),
+('Ghana', 'GHA', 'H', 'https://flagcdn.com/w160/gh.png'),
+('Uruguay', 'URU', 'H', 'https://flagcdn.com/w160/uy.png'),
+('Corea del Sur', 'KOR', 'H', 'https://flagcdn.com/w160/kr.png')
+ON CONFLICT (code) DO UPDATE SET 
+  name = EXCLUDED.name,
+  group_name = EXCLUDED.group_name,
+  flag_url = EXCLUDED.flag_url;

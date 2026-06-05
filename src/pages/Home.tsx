@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Calendar, LayoutGrid, Award, Search, Info, DollarSign, LogIn, LogOut, Database, User as UserIcon, Camera, Edit2, Loader2, ListOrdered, ChevronRight, Settings as SettingsIcon, X } from 'lucide-react';
 import { TournamentBracket } from '@/components/TournamentBracket';
 import { CountdownTimer } from '@/components/CountdownTimer';
-import { MOCK_MATCHES } from '@/lib/mockData';
+import { MOCK_MATCHES, getInitialBracket } from '@/lib/mockData';
 import { GROUPS, WORLD_CUP_TEAMS } from '@/lib/constants';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -19,7 +19,6 @@ import logo from '../../public/assets/logo.svg';
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
 // Logo oficial con la copa (26 con el trofeo)
-
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('grupos');
   const [matches, setMatches] = useState<Match[]>([]);
@@ -300,73 +299,7 @@ export default function Home() {
 
   const handleSeed = async () => {
     if (!isAdmin) return;
-    const initialBracket = [
-      {
-        name: 'R32',
-        matches: Array(16).fill(null).map((_, i) => ({
-          id: `r32-${i}`,
-          homeTeam: WORLD_CUP_TEAMS[i * 2] || null,
-          awayTeam: WORLD_CUP_TEAMS[i * 2 + 1] || null,
-          status: 'pending' as const,
-          date: i < 4 ? '28 JUN' : i < 8 ? '29 JUN' : i < 12 ? '30 JUN' : '01 JUL',
-          location: ['LOS ANGELES', 'NEW YORK', 'DALLAS', 'HOUSTON', 'MEXICO CITY', 'TORONTO', 'BOSTON', 'MIAMI'][i % 8],
-          homeScore: '',
-          awayScore: ''
-        }))
-      },
-      {
-        name: 'R16',
-        matches: Array(8).fill(null).map((_, i) => ({
-          id: `r16-${i}`,
-          homeTeam: null,
-          awayTeam: null,
-          status: 'pending' as const,
-          date: i < 4 ? '04 JUL' : '05 JUL',
-          location: ['PHILADELPHIA', 'HOUSTON', 'NEW YORK', 'DALLAS'][i % 4],
-          homeScore: '',
-          awayScore: ''
-        }))
-      },
-      {
-        name: 'CUARTOS',
-        matches: Array(4).fill(null).map((_, i) => ({
-          id: `qf-${i}`,
-          homeTeam: null,
-          awayTeam: null,
-          status: 'pending' as const,
-          date: i < 2 ? '09 JUL' : '10 JUL',
-          location: ['BOSTON', 'LOS ANGELES', 'MIAMI', 'KANSAS CITY'][i],
-          homeScore: '',
-          awayScore: ''
-        }))
-      },
-      {
-        name: 'SEMIFINAL',
-        matches: Array(2).fill(null).map((_, i) => ({
-          id: `sf-${i}`,
-          homeTeam: null,
-          awayTeam: null,
-          status: 'pending' as const,
-          date: i === 0 ? '14 JUL' : '15 JUL',
-          location: i === 0 ? 'DALLAS' : 'ATLANTA',
-          homeScore: '',
-          awayScore: ''
-        }))
-      },
-      {
-        name: 'FINAL',
-        matches: [{
-          id: 'final',
-          homeTeam: null,
-          awayTeam: null,
-          status: 'pending' as const,
-          date: '19 JUL',
-          location: 'NEW YORK / NEW JERSEY',
-          homeScore: '',
-          awayScore: ''
-        }]
-      }
-    ];
+    const initialBracket = getInitialBracket();
 
     try {
       await dbService.seedInitialData(WORLD_CUP_TEAMS, MOCK_MATCHES, initialBracket);

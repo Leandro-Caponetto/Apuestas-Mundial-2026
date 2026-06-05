@@ -14,6 +14,8 @@ interface BracketMatch {
   status: 'pending' | 'finished';
   date?: string;
   location?: string;
+  homePlaceholder?: string;
+  awayPlaceholder?: string;
 }
 
 interface Round {
@@ -233,12 +235,12 @@ const MatchNode: React.FC<{
                   <img src={match.homeTeam.flag_url} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[8px] font-black italic text-white/20 tracking-normal bg-linear-to-br from-white/10 to-transparent">
-                    {roundName === 'R32' ? `1${["A","B","C","D","E","F","G","H","I","J","K","L"][parseInt(match.id.split('-')[1]) % 12]}` : 'TBD'}
+                    {match.homePlaceholder || (roundName === 'R32' ? `1${["A","B","C","D","E","F","G","H","I","J","K","L"][parseInt(match.id.split('-')[1]) % 12]}` : 'TBD')}
                   </div>
                 )}
               </div>
               <span className={`text-[12px] font-black text-white uppercase italic tracking-tighter truncate ${isCenter ? 'text-[14px]' : 'max-w-[70px] lg:max-w-[100px]'} group-hover:text-amber-400 transition-colors`}>
-                {match.homeTeam?.name || 'TBD'}
+                {match.homeTeam?.name || match.homePlaceholder || 'TBD'}
               </span>
             </motion.div>
             <AnimatePresence>
@@ -286,12 +288,12 @@ const MatchNode: React.FC<{
                   <img src={match.awayTeam.flag_url} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[8px] font-black italic text-white/20 tracking-normal bg-linear-to-br from-white/10 to-transparent">
-                    {roundName === 'R32' ? `2${["A","B","C","D","E","F","G","H","I","J","K","L"][(parseInt(match.id.split('-')[1]) + 1) % 12]}` : 'TBD'}
+                    {match.awayPlaceholder || (roundName === 'R32' ? `2${["A","B","C","D","E","F","G","H","I","J","K","L"][(parseInt(match.id.split('-')[1]) + 1) % 12]}` : 'TBD')}
                   </div>
                 )}
               </div>
               <span className={`text-[12px] font-black text-white uppercase italic tracking-tighter truncate ${isCenter ? 'text-[14px]' : 'max-w-[70px] lg:max-w-[100px]'} group-hover:text-amber-400 transition-colors`}>
-                {match.awayTeam?.name || 'TBD'}
+                {match.awayTeam?.name || match.awayPlaceholder || 'TBD'}
               </span>
             </motion.div>
             <AnimatePresence>
