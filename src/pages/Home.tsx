@@ -14,11 +14,13 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { dbService } from '@/services/dbService';
 import { toast } from 'react-hot-toast';
+
 import logo from '../../public/assets/logo.svg';
 
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
 // Logo oficial con la copa (26 con el trofeo)
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('grupos');
   const [matches, setMatches] = useState<Match[]>([]);

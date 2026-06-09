@@ -14,9 +14,30 @@ export default function Admin() {
   const [resolveModalMatch, setResolveModalMatch] = useState<Match | null>(null);
   const [editModalMatch, setEditModalMatch] = useState<Match | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isAdminUser, setIsAdminUser] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetchData();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const email = session?.user?.email;
+      if (email === 'caponettopeppers@gmail.com') {
+        setIsAdminUser(true);
+        fetchData();
+      } else {
+        setIsAdminUser(false);
+        setLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const email = session?.user?.email;
+      if (email === 'caponettopeppers@gmail.com') {
+        setIsAdminUser(true);
+      } else {
+        setIsAdminUser(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   async function fetchData() {
@@ -157,6 +178,29 @@ export default function Admin() {
     } catch (err: any) {
       toast.error('Error al restablecer: ' + err.message);
     }
+  }
+
+  if (isAdminUser === null || loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 text-center min-h-[50vh]">
+        <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-zinc-500 font-black uppercase italic tracking-widest text-xs">Cargando Panel...</p>
+      </div>
+    );
+  }
+
+  if (isAdminUser === false) {
+    return (
+      <div className="max-w-md mx-auto text-center p-12 bg-zinc-900 border border-zinc-800 rounded-[2.5rem] mt-12 space-y-6">
+        <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-3xl flex items-center justify-center mx-auto text-xl">
+          ⚠️
+        </div>
+        <h2 className="text-xl font-black uppercase italic tracking-tighter text-white animate-pulse">Acceso Restringido</h2>
+        <p className="text-zinc-500 text-sm font-bold uppercase italic tracking-wider leading-relaxed">
+          Este panel de control es exclusivo de administradores. Por favor, inicia sesión con la cuenta de administrador.
+        </p>
+      </div>
+    );
   }
 
   return (

@@ -957,12 +957,8 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log('--- STARTUP ENVIRONMENT DIAGNOSTICS ---');
-    console.log('VITE_SUPABASE_URL is configured:', !!process.env.VITE_SUPABASE_URL);
-    console.log('SUPABASE_SERVICE_ROLE_KEY is configured:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
-    console.log('VITE_SUPABASE_ANON_KEY is configured:', !!process.env.VITE_SUPABASE_ANON_KEY);
-    console.log('Keys in process.env containing VITE, KEY or URL:', Object.keys(process.env).filter(k => k.includes('VITE_') || k.includes('KEY') || k.includes('URL') || k.includes('SUPABASE')));
-    console.log('----------------------------------------');
+    console.log('=== ENVIRONMENT VARIABLES ===');
+ 
   });
 }
 

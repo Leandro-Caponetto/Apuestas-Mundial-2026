@@ -56,6 +56,7 @@ export function Navbar() {
     { name: 'PRODE', href: '/betting', icon: CheckSquare },
     { name: 'Ranking', href: '/leaderboard', icon: ListOrdered },
     { name: 'Liga', href: '/leagues', icon: Trophy },
+    ...(user?.email === 'caponettopeppers@gmail.com' ? [{ name: 'Admin', href: '/admin', icon: Settings }] : []),
   ];
 
   return (
