@@ -60,43 +60,41 @@ export function Navbar() {
   ];
 
   return (
-    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-zinc-900/90 backdrop-blur-2xl border border-zinc-800 p-2 rounded-full z-50 flex items-center gap-1 shadow-[0_20px_50px_rgba(0,0,0,0.5)] md:top-6 md:bottom-auto md:h-fit">
-      <div className="flex items-center gap-1 px-1">
+    <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-fit bg-zinc-950/95 backdrop-blur-2xl border border-zinc-850 p-1 rounded-full z-50 flex items-center justify-between gap-1 shadow-[0_15px_35px_rgba(0,0,0,0.7)] md:bottom-auto md:top-6 md:h-fit md:p-2">
+      <div className="flex items-center gap-0.5 md:gap-1 px-1 overflow-x-auto no-scrollbar scroll-smooth">
         {navItems.map((item) => (
           <Link
             key={item.href}
             to={item.href}
-            className={`flex items-center gap-2 px-6 py-3 rounded-full text-[10px] font-black tracking-[0.2em] uppercase italic transition-all duration-300 ${
+            className={`flex items-center justify-center gap-1.5 px-3 py-2.5 md:px-5 md:py-3 lg:px-6 rounded-full text-[9px] md:text-[10px] font-black tracking-[0.12em] md:tracking-[0.2em] uppercase italic transition-all duration-300 shrink-0 ${
               location.pathname === item.href
-                ? 'bg-orange-500 text-black shadow-[0_0_20px_rgba(249,115,22,0.4)]'
-                : 'text-zinc-500 hover:text-white hover:bg-zinc-800/50'
+                ? 'bg-orange-500 text-black shadow-[0_0_15px_rgba(249,115,22,0.4)]'
+                : 'text-zinc-500 hover:text-white hover:bg-zinc-900/50'
             }`}
           >
-            <item.icon size={16} strokeWidth={3} />
-            <span className="hidden md:inline">{item.name}</span>
+            <item.icon size={14} strokeWidth={3} className="shrink-0 md:size-4" />
+            <span className="hidden sm:inline">{item.name}</span>
           </Link>
         ))}
       </div>
       
       {user && (
         <>
-          <div className="w-[1px] h-6 bg-zinc-800 mx-2" />
+          <div className="w-[1px] h-5 bg-zinc-800/80 mx-1 md:h-7 md:mx-2 shrink-0" />
           <Link
             to="/profile"
-            className="flex items-center gap-3 pl-1.5 pr-6 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/50 rounded-full transition-all group lg:min-w-[120px]"
+            className="flex items-center gap-1.5 pl-1 pr-1.5 py-1 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800/60 rounded-full transition-all group shrink-0 md:pl-1.5 md:pr-4 md:py-1.5"
           >
-            <div className="w-10 h-10 rounded-full bg-zinc-900 border-2 border-orange-500/0 group-hover:border-orange-500/50 overflow-hidden flex items-center justify-center transition-all">
+            <div className="w-7 h-7 rounded-full bg-zinc-950 border-2 border-orange-500/0 group-hover:border-orange-500/50 overflow-hidden flex items-center justify-center transition-all md:w-9 md:h-9">
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="Profile" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
               ) : (
-                <UserIcon size={18} className="text-zinc-500" />
+                <UserIcon size={12} className="text-zinc-500 md:size-4" />
               )}
             </div>
-            <div className="flex flex-col">
-              <span className="text-white text-xs font-black uppercase italic tracking-tighter leading-none">
-                {profile?.points || 0} <span className="text-[10px] text-orange-500">PTS</span>
-              </span>
-            </div>
+            <span className="text-white text-[9px] md:text-xs font-black uppercase italic tracking-tighter leading-none pr-1 hidden min-with-350:block min-[380px]:inline-block">
+              {profile?.points || 0} <span className="text-[7.5px] md:text-[10px] text-orange-500">PTS</span>
+            </span>
           </Link>
         </>
       )}

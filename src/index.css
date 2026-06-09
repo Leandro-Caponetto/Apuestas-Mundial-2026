@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-/* CONFIG THEME */
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
@@ -9,20 +8,12 @@
   --color-brand-orange: #f97316;
 }
 
-/* BASE */
 @layer base {
   body {
     @apply bg-black text-zinc-100 antialiased overflow-x-hidden;
-
-    /* ✅ ACÁ VA LA IMAGEN */
-    background-image: url('public/assets/logo.svg');
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: contain;
   }
 }
 
-/* COMPONENTS */
 @layer components {
   .sport-card {
     @apply bg-zinc-900/50 backdrop-blur-md border border-zinc-800/50 rounded-[2.5rem] p-8 transition-all hover:border-orange-500/30 shadow-2xl;
@@ -43,9 +34,36 @@
   .text-glow {
     text-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
   }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(6, 182, 212, 0.2);
+    border-radius: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(6, 182, 212, 0.5);
+  }
 }
 
-/* SCROLL */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap');
+
 ::-webkit-scrollbar {
   width: 6px;
 }

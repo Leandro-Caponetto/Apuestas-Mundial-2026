@@ -15,7 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { dbService } from '@/services/dbService';
 import { toast } from 'react-hot-toast';
 
-import logo from '../../public/assets/logo.svg';
+import logo from '../../public/assets/logo.svg'
 
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
@@ -529,8 +529,8 @@ export default function Home() {
       </header>
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 sticky top-6 z-40">
-        <div className="p-1 glass rounded-full flex items-center gap-1 shadow-2xl">
+      <div className="flex items-center justify-center gap-2 md:gap-4 sticky top-6 z-40 max-w-full px-4">
+        <div className="p-1 glass rounded-full flex items-center gap-0.5 md:gap-1 shadow-2xl max-w-full overflow-x-auto no-scrollbar scroll-smooth">
           {[
             { id: 'partidos', label: 'Fixture', icon: Calendar },
             { id: 'grupos', label: 'Grupos', icon: LayoutGrid },
@@ -540,14 +540,14 @@ export default function Home() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as Tab)}
-              className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-black uppercase italic tracking-tighter transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 md:px-6 md:py-3 rounded-full text-[10px] md:text-xs font-black uppercase italic tracking-tighter shrink-0 transition-all ${
                 activeTab === tab.id
                   ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20'
                   : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
               }`}
             >
-              <tab.icon size={16} />
-              {tab.label}
+              <tab.icon size={14} className="shrink-0 md:size-[16px]" />
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>

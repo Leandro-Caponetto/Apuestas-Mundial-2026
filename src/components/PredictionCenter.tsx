@@ -31,7 +31,7 @@ export const PredictionCenter: React.FC<PredictionCenterProps> = ({ matches = []
           </div>
         </div>
 
-        <div className="flex items-center gap-2 glass p-1.5 rounded-2xl">
+        <div className="flex items-center gap-1 glass p-1 rounded-2xl max-w-full overflow-x-auto no-scrollbar shrink-0">
           {[
             { id: 'all', label: 'Todos', icon: ListFilter },
             { id: 'pending', label: 'Abiertos', icon: SlidersHorizontal },
@@ -40,13 +40,13 @@ export const PredictionCenter: React.FC<PredictionCenterProps> = ({ matches = []
             <button
               key={item.id}
               onClick={() => setFilter(item.id as any)}
-              className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black uppercase italic tracking-widest transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 md:px-5 md:py-2.5 rounded-xl text-[9px] md:text-[10px] font-black uppercase italic tracking-widest shrink-0 transition-all ${
                 filter === item.id
-                  ? 'bg-zinc-800 text-white border border-zinc-700'
+                  ? 'bg-zinc-800 text-white border border-zinc-700 shadow-sm'
                   : 'text-zinc-500 hover:text-white'
               }`}
             >
-              <item.icon size={12} />
+              <item.icon size={11} className="shrink-0" />
               {item.label}
             </button>
           ))}
