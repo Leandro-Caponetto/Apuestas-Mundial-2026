@@ -168,61 +168,72 @@ export const MOCK_LEADERBOARD: Profile[] = [
   { id: 'u5', username: 'neymar', full_name: 'Neymar Jr', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Neymar', points: 85, balance: 2500 },
 ];
 
-export const getInitialBracket = () => [
-  {
-    name: 'R32',
-    matches: [
-      { id: 'r32-0', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '28 JUN', location: 'Estadio Los Angeles', homePlaceholder: '2A', awayPlaceholder: '2B', homeScore: '', awayScore: '' },
-      { id: 'r32-1', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '29 JUN', location: 'Estadio Houston', homePlaceholder: '1C', awayPlaceholder: '2F', homeScore: '', awayScore: '' },
-      { id: 'r32-2', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '29 JUN', location: 'Estadio Boston', homePlaceholder: '1E', awayPlaceholder: '3ABCDF', homeScore: '', awayScore: '' },
-      { id: 'r32-3', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '29 JUN', location: 'Estadio Monterrey', homePlaceholder: '1F', awayPlaceholder: '2C', homeScore: '', awayScore: '' },
-      { id: 'r32-4', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '30 JUN', location: 'Estadio Dallas', homePlaceholder: '2E', awayPlaceholder: '2I', homeScore: '', awayScore: '' },
-      { id: 'r32-5', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '30 JUN', location: 'Estadio N.Y./N.J.', homePlaceholder: '1I', awayPlaceholder: '3CDFGH', homeScore: '', awayScore: '' },
-      { id: 'r32-6', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '30 JUN', location: 'Estadio Ciudad de México', homePlaceholder: '1A', awayPlaceholder: '3CEFHI', homeScore: '', awayScore: '' },
-      { id: 'r32-7', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '01 JUL', location: 'Estadio Atlanta', homePlaceholder: '1L', awayPlaceholder: '3EHIJK', homeScore: '', awayScore: '' },
-      { id: 'r32-8', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '01 JUL', location: 'Estadio Seattle', homePlaceholder: '1G', awayPlaceholder: '3AEHIJ', homeScore: '', awayScore: '' },
-      { id: 'r32-9', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '01 JUL', location: 'Estadio Bahía S.F.', homePlaceholder: '1D', awayPlaceholder: '3BEFIJ', homeScore: '', awayScore: '' },
-      { id: 'r32-10', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '02 JUL', location: 'Estadio Los Angeles', homePlaceholder: '1H', awayPlaceholder: '2J', homeScore: '', awayScore: '' },
-      { id: 'r32-11', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '02 JUL', location: 'Estadio Toronto', homePlaceholder: '2K', awayPlaceholder: '2L', homeScore: '', awayScore: '' },
-      { id: 'r32-12', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '03 JUL', location: 'Estadio Vancouver', homePlaceholder: '1B', awayPlaceholder: '3EFGIJ', homeScore: '', awayScore: '' },
-      { id: 'r32-13', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '03 JUL', location: 'Estadio Dallas', homePlaceholder: '2D', awayPlaceholder: '2G', homeScore: '', awayScore: '' },
-      { id: 'r32-14', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '03 JUL', location: 'Estadio Miami', homePlaceholder: '1J', awayPlaceholder: '2H', homeScore: '', awayScore: '' },
-      { id: 'r32-15', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '03 JUL', location: 'Estadio Kansas City', homePlaceholder: '1K', awayPlaceholder: '3DEIJL', homeScore: '', awayScore: '' }
-    ]
-  },
-  {
-    name: 'R16',
-    matches: [
-      { id: 'r16-0', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '04 JUL', location: 'Estadio Houston', homePlaceholder: 'W73', awayPlaceholder: 'W75', homeScore: '', awayScore: '' },
-      { id: 'r16-1', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '04 JUL', location: 'Estadio Filadelfia', homePlaceholder: 'W74', awayPlaceholder: 'W77', homeScore: '', awayScore: '' },
-      { id: 'r16-2', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '05 JUL', location: 'Estadio N.Y./N.J.', homePlaceholder: 'W76', awayPlaceholder: 'W78', homeScore: '', awayScore: '' },
-      { id: 'r16-3', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '05 JUL', location: 'Estadio Ciudad de México', homePlaceholder: 'W79', awayPlaceholder: 'W80', homeScore: '', awayScore: '' },
-      { id: 'r16-4', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '06 JUL', location: 'Estadio Dallas', homePlaceholder: 'W83', awayPlaceholder: 'W84', homeScore: '', awayScore: '' },
-      { id: 'r16-5', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '06 JUL', location: 'Estadio Seattle', homePlaceholder: 'W81', awayPlaceholder: 'W82', homeScore: '', awayScore: '' },
-      { id: 'r16-6', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '07 JUL', location: 'Estadio Atlanta', homePlaceholder: 'W86', awayPlaceholder: 'W88', homeScore: '', awayScore: '' },
-      { id: 'r16-7', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '07 JUL', location: 'Estadio Vancouver', homePlaceholder: 'W85', awayPlaceholder: 'W87', homeScore: '', awayScore: '' }
-    ]
-  },
-  {
-    name: 'CUARTOS',
-    matches: [
-      { id: 'qf-0', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '09 JUL', location: 'Estadio Boston', homePlaceholder: 'W89', awayPlaceholder: 'W90', homeScore: '', awayScore: '' },
-      { id: 'qf-1', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '10 JUL', location: 'Estadio Los Angeles', homePlaceholder: 'W93', awayPlaceholder: 'W94', homeScore: '', awayScore: '' },
-      { id: 'qf-2', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '11 JUL', location: 'Estadio Miami', homePlaceholder: 'W91', awayPlaceholder: 'W92', homeScore: '', awayScore: '' },
-      { id: 'qf-3', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '11 JUL', location: 'Estadio Kansas City', homePlaceholder: 'W95', awayPlaceholder: 'W96', homeScore: '', awayScore: '' }
-    ]
-  },
-  {
-    name: 'SEMIFINAL',
-    matches: [
-      { id: 'sf-0', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '14 JUL', location: 'Estadio Dallas', homePlaceholder: 'W97', awayPlaceholder: 'W98', homeScore: '', awayScore: '' },
-      { id: 'sf-1', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '15 JUL', location: 'Estadio Atlanta', homePlaceholder: 'W99', awayPlaceholder: 'W100', homeScore: '', awayScore: '' }
-    ]
-  },
-  {
-    name: 'FINAL',
-    matches: [
-      { id: 'final', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '19 JUL', location: 'Estadio N.Y./N.J.', homePlaceholder: 'W101', awayPlaceholder: 'W102', homeScore: '', awayScore: '' }
-    ]
+const getTeamByCodeSafe = (code: string): Team | null => {
+  const normCode = code.toUpperCase();
+  if (normCode === 'ITA') {
+    return { id: 'ita', name: 'Italia', code: 'ITA', flag_url: 'https://flagcdn.com/w160/it.png', group_name: 'D' };
   }
-];
+  return WORLD_CUP_TEAMS.find(t => t.code.toUpperCase() === normCode) || null;
+};
+
+export const getInitialBracket = () => {
+  const getT = (code: string) => getTeamByCodeSafe(code);
+  return [
+    {
+      name: 'R32',
+      matches: [
+        { id: 'r32-0', homeTeam: getT('KOR'), awayTeam: getT('CAN'), status: 'pending' as const, date: '28 JUN', location: 'Estadio Los Angeles', homePlaceholder: '2A', awayPlaceholder: '2B', homeScore: '', awayScore: '' },
+        { id: 'r32-1', homeTeam: getT('BRA'), awayTeam: getT('JPN'), status: 'pending' as const, date: '29 JUN', location: 'Estadio Houston', homePlaceholder: '1C', awayPlaceholder: '2F', homeScore: '', awayScore: '' },
+        { id: 'r32-2', homeTeam: getT('GER'), awayTeam: getT('BEL'), status: 'pending' as const, date: '29 JUN', location: 'Estadio Boston', homePlaceholder: '1E', awayPlaceholder: '3ABCDF', homeScore: '', awayScore: '' },
+        { id: 'r32-3', homeTeam: getT('NED'), awayTeam: getT('MAR'), status: 'pending' as const, date: '29 JUN', location: 'Estadio Monterrey', homePlaceholder: '1F', awayPlaceholder: '2C', homeScore: '', awayScore: '' },
+        { id: 'r32-4', homeTeam: getT('ECU'), awayTeam: getT('SEN'), status: 'pending' as const, date: '30 JUN', location: 'Estadio Dallas', homePlaceholder: '2E', awayPlaceholder: '2I', homeScore: '', awayScore: '' },
+        { id: 'r32-5', homeTeam: getT('FRA'), awayTeam: getT('USA'), status: 'pending' as const, date: '30 JUN', location: 'Estadio N.Y./N.J.', homePlaceholder: '1I', awayPlaceholder: '3CDFGH', homeScore: '', awayScore: '' },
+        { id: 'r32-6', homeTeam: getT('MEX'), awayTeam: getT('SWE'), status: 'pending' as const, date: '30 JUN', location: 'Estadio Ciudad de México', homePlaceholder: '1A', awayPlaceholder: '3CEFHI', homeScore: '', awayScore: '' },
+        { id: 'r32-7', homeTeam: getT('ENG'), awayTeam: getT('COL'), status: 'pending' as const, date: '01 JUL', location: 'Estadio Atlanta', homePlaceholder: '1L', awayPlaceholder: '3EHIJK', homeScore: '', awayScore: '' },
+        { id: 'r32-8', homeTeam: getT('EGY'), awayTeam: getT('SUI'), status: 'pending' as const, date: '01 JUL', location: 'Estadio Seattle', homePlaceholder: '1G', awayPlaceholder: '3AEHIJ', homeScore: '', awayScore: '' },
+        { id: 'r32-9', homeTeam: getT('TUR'), awayTeam: getT('ITA'), status: 'pending' as const, date: '01 JUL', location: 'Estadio Bahía S.F.', homePlaceholder: '1D', awayPlaceholder: '3BEFIJ', homeScore: '', awayScore: '' },
+        { id: 'r32-10', homeTeam: getT('ESP'), awayTeam: getT('AUT'), status: 'pending' as const, date: '02 JUL', location: 'Estadio Los Angeles', homePlaceholder: '1H', awayPlaceholder: '2J', homeScore: '', awayScore: '' },
+        { id: 'r32-11', homeTeam: getT('POR'), awayTeam: getT('CRO'), status: 'pending' as const, date: '02 JUL', location: 'Estadio Toronto', homePlaceholder: '2K', awayPlaceholder: '2L', homeScore: '', awayScore: '' },
+        { id: 'r32-12', homeTeam: getT('QAT'), awayTeam: getT('ARG'), status: 'pending' as const, date: '03 JUL', location: 'Estadio Vancouver', homePlaceholder: '1B', awayPlaceholder: '3EFGIJ', homeScore: '', awayScore: '' },
+        { id: 'r32-13', homeTeam: getT('PAR'), awayTeam: getT('URU'), status: 'pending' as const, date: '03 JUL', location: 'Estadio Dallas', homePlaceholder: '2D', awayPlaceholder: '2G', homeScore: '', awayScore: '' },
+        { id: 'r32-14', homeTeam: getT('ALG'), awayTeam: getT('TUN'), status: 'pending' as const, date: '03 JUL', location: 'Estadio Miami', homePlaceholder: '1J', awayPlaceholder: '2H', homeScore: '', awayScore: '' },
+        { id: 'r32-15', homeTeam: getT('UZB'), awayTeam: getT('PAN'), status: 'pending' as const, date: '03 JUL', location: 'Estadio Kansas City', homePlaceholder: '1K', awayPlaceholder: '3DEIJL', homeScore: '', awayScore: '' }
+      ]
+    },
+    {
+      name: 'R16',
+      matches: [
+        { id: 'r16-0', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '04 JUL', location: 'Estadio Houston', homePlaceholder: 'Ganador R32-0', awayPlaceholder: 'Ganador R32-1', homeScore: '', awayScore: '' },
+        { id: 'r16-1', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '04 JUL', location: 'Estadio Filadelfia', homePlaceholder: 'Ganador R32-2', awayPlaceholder: 'Ganador R32-3', homeScore: '', awayScore: '' },
+        { id: 'r16-2', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '05 JUL', location: 'Estadio N.Y./N.J.', homePlaceholder: 'Ganador R32-4', awayPlaceholder: 'Ganador R32-5', homeScore: '', awayScore: '' },
+        { id: 'r16-3', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '05 JUL', location: 'Estadio Ciudad de México', homePlaceholder: 'Ganador R32-6', awayPlaceholder: 'Ganador R32-7', homeScore: '', awayScore: '' },
+        { id: 'r16-4', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '06 JUL', location: 'Estadio Dallas', homePlaceholder: 'Ganador R32-8', awayPlaceholder: 'Ganador R32-9', homeScore: '', awayScore: '' },
+        { id: 'r16-5', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '06 JUL', location: 'Estadio Seattle', homePlaceholder: 'Ganador R32-10', awayPlaceholder: 'Ganador R32-11', homeScore: '', awayScore: '' },
+        { id: 'r16-6', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '07 JUL', location: 'Estadio Atlanta', homePlaceholder: 'Ganador R32-12', awayPlaceholder: 'Ganador R32-13', homeScore: '', awayScore: '' },
+        { id: 'r16-7', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '07 JUL', location: 'Estadio Vancouver', homePlaceholder: 'Ganador R32-14', awayPlaceholder: 'Ganador R32-15', homeScore: '', awayScore: '' }
+      ]
+    },
+    {
+      name: 'CUARTOS',
+      matches: [
+        { id: 'qf-0', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '09 JUL', location: 'Estadio Boston', homePlaceholder: 'Ganador R16-0', awayPlaceholder: 'Ganador R16-1', homeScore: '', awayScore: '' },
+        { id: 'qf-1', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '10 JUL', location: 'Estadio Los Angeles', homePlaceholder: 'Ganador R16-2', awayPlaceholder: 'Ganador R16-3', homeScore: '', awayScore: '' },
+        { id: 'qf-2', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '11 JUL', location: 'Estadio Miami', homePlaceholder: 'Ganador R16-4', awayPlaceholder: 'Ganador R16-5', homeScore: '', awayScore: '' },
+        { id: 'qf-3', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '11 JUL', location: 'Estadio Kansas City', homePlaceholder: 'Ganador R16-6', awayPlaceholder: 'Ganador R16-7', homeScore: '', awayScore: '' }
+      ]
+    },
+    {
+      name: 'SEMIFINAL',
+      matches: [
+        { id: 'sf-0', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '14 JUL', location: 'Estadio Dallas', homePlaceholder: 'Ganador QF-0', awayPlaceholder: 'Ganador QF-1', homeScore: '', awayScore: '' },
+        { id: 'sf-1', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '15 JUL', location: 'Estadio Atlanta', homePlaceholder: 'Ganador QF-2', awayPlaceholder: 'Ganador QF-3', homeScore: '', awayScore: '' }
+      ]
+    },
+    {
+      name: 'FINAL',
+      matches: [
+        { id: 'final', homeTeam: null, awayTeam: null, status: 'pending' as const, date: '19 JUL', location: 'Estadio N.Y./N.J.', homePlaceholder: 'Ganador SF-0', awayPlaceholder: 'Ganador SF-1', homeScore: '', awayScore: '' }
+      ]
+    }
+  ];
+};

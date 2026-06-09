@@ -17,6 +17,7 @@ import { toast } from 'react-hot-toast';
 
 import logo from '../../public/assets/logo.svg'
 
+
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
 // Logo oficial con la copa (26 con el trofeo)
@@ -38,6 +39,7 @@ export default function Home() {
 
   // Bracket State
   const [bracketRounds, setBracketRounds] = useState<any[]>([]);
+  const [isSyncingBracket, setIsSyncingBracket] = useState(false);
   const isMountedRef = React.useRef(true);
 
   // Keep track of mounting lifecycle
@@ -100,13 +102,46 @@ export default function Home() {
 
     loadRanking();
 
+    const isBracketEmptyHelper = (r: any[]) => {
+      if (!r || r.length === 0) return true;
+      return r.every(round => round.matches.every((m: any) => !m.homeTeam && !m.awayTeam));
+    };
+
     // Data Subscriptions
     const unsubscribeBracket = dbService.subscribeBracket((rounds) => {
-      if (isMountedRef.current && rounds) setBracketRounds(rounds);
+      if (isMountedRef.current) {
+        const localB = localStorage.getItem('synced_bracket');
+        let parsedLocal: any = null;
+        if (localB) {
+          try {
+            parsedLocal = JSON.parse(localB);
+          } catch (_) {}
+        }
+
+        if (parsedLocal && !isBracketEmptyHelper(parsedLocal)) {
+          setBracketRounds(parsedLocal);
+        } else if (rounds && !isBracketEmptyHelper(rounds)) {
+          setBracketRounds(rounds);
+        } else {
+          setBracketRounds(getInitialBracket());
+        }
+      }
     });
 
     const unsubscribeMatches = dbService.subscribeMatches((newMatches) => {
       if (!isMountedRef.current) return;
+      const localM = localStorage.getItem('synced_matches');
+      if (localM) {
+        try {
+          const parsed = JSON.parse(localM);
+          if (parsed && parsed.length > 0) {
+            setMatches(parsed);
+            setLoading(false);
+            return;
+          }
+        } catch (_) {}
+      }
+      
       if (newMatches && newMatches.length > 0) {
         setMatches(newMatches);
         setLoading(false);
@@ -280,6 +315,7 @@ export default function Home() {
     }
 
     setBracketRounds(nextRounds);
+    localStorage.setItem('synced_bracket', JSON.stringify(nextRounds));
     
     // Save to Firestore if admin
     if (isAdmin) {
@@ -302,6 +338,7 @@ export default function Home() {
     });
 
     setBracketRounds(nextRounds);
+    localStorage.setItem('synced_bracket', JSON.stringify(nextRounds));
     if (isAdmin) {
       await dbService.saveBracket(nextRounds);
     }
@@ -318,6 +355,49 @@ export default function Home() {
     } catch (err: any) {
       toast.error('Error al inicializar: ' + (err.message || 'Intente nuevamente'));
       console.error(err);
+    }
+  };
+
+  const handleSyncBracket = async () => {
+    setIsSyncingBracket(true);
+    const toastId = toast.loading('Sincronizando fixture de eliminatorias en tiempo real...');
+    try {
+      const res = await fetch('/api/sync-matches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-supabase-url': import.meta.env.VITE_SUPABASE_URL || '',
+          'x-supabase-key': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('¡Eliminatorias sincronizadas correctamente! Los países reales se han cargado en el cuadro.', { id: toastId });
+        
+        if (data.bracket && data.bracket.length > 0) {
+          localStorage.setItem('synced_bracket', JSON.stringify(data.bracket));
+          setBracketRounds(data.bracket);
+        } else {
+          // Recargar el bracket desde la base de datos
+          const rounds = await dbService.getBracket();
+          if (rounds) {
+            localStorage.setItem('synced_bracket', JSON.stringify(rounds));
+            setBracketRounds(rounds);
+          }
+        }
+
+        if (data.matches && data.matches.length > 0) {
+          localStorage.setItem('synced_matches', JSON.stringify(data.matches));
+          setMatches(data.matches);
+        }
+      } else {
+        throw new Error(data.error || 'Fallo general');
+      }
+    } catch (err: any) {
+      toast.error('Error al sincronizar eliminatorias: ' + (err.message || 'Intente de nuevo'), { id: toastId });
+      console.error(err);
+    } finally {
+      setIsSyncingBracket(false);
     }
   };
 
@@ -673,59 +753,120 @@ export default function Home() {
             </motion.div>
           )}
 
-          {activeTab === 'bracket' && (
-            <motion.div 
-              key="bracket"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="relative left-1/2 -ml-[50vw] w-screen"
-            >
-              <div className="max-w-7xl mx-auto px-8 mb-12">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h2 className="text-4xl md:text-6xl font-black text-white uppercase italic tracking-tighter flex items-center gap-4">
-                      Árbol de <span className="text-orange-500 text-glow">Eliminatorias</span>
-                    </h2>
-                    <div className="flex items-center gap-3 text-xs font-black text-zinc-500 uppercase tracking-widest italic">
-                      <div className="w-3 h-3 rounded-full bg-orange-500 animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.8)]" /> 
-                      Fase Final • FIFA World Cup 2026
-                    </div>
-                  </div>
-                  
-                  <div className="hidden lg:flex items-center gap-6">
-                    <div className="text-right">
-                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sedes</p>
-                      <p className="text-sm font-black text-white italic">MÉXICO • USA • CANADÁ</p>
-                    </div>
-                    <div className="w-px h-10 bg-white/10" />
-                    <Trophy size={40} className="text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.3)]" />
-                  </div>
-                </div>
-              </div>
-              
-              <div className="relative">
-                <TournamentBracket 
-                  rounds={bracketRounds} 
-                  onUpdateScore={handleUpdateBracketScore}
-                  onSetWinner={handleSetWinnerAtSlot}
-                />
-              </div>
+          {activeTab === 'bracket' && (() => {
+            const isBracketEmpty = !bracketRounds || bracketRounds.length === 0 || 
+              bracketRounds.every(round => round.matches.every((m: any) => !m.homeTeam && !m.awayTeam));
 
-              <div className="max-w-7xl mx-auto px-8 py-20 text-center">
-                <motion.div
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                >
-                  <Trophy size={80} className="mx-auto text-orange-500 mb-6 drop-shadow-[0_0_30px_rgba(249,115,22,0.4)]" />
-                </motion.div>
-                <div className="space-y-2">
-                  <p className="text-xl font-black text-white italic uppercase tracking-[0.2em]">El camino a la gloria eterna</p>
-                  <p className="text-xs font-bold text-zinc-600 uppercase tracking-[0.5em]">Predice el campeón del mundo</p>
+            return (
+              <motion.div 
+                key="bracket"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="relative left-1/2 -ml-[50vw] w-screen"
+              >
+                <div className="max-w-7xl mx-auto px-8 mb-12">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="space-y-2">
+                      <h2 className="text-4xl md:text-6xl font-black text-white uppercase italic tracking-tighter flex flex-wrap items-center gap-4">
+                        Árbol de <span className="text-orange-500 text-glow">Eliminatorias</span>
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-3 text-xs font-black text-zinc-500 uppercase tracking-widest italic">
+                          <div className="w-3 h-3 rounded-full bg-orange-500 animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.8)]" /> 
+                          Fase Final • FIFA World Cup 2026
+                        </div>
+                        
+                        <button
+                          onClick={handleSyncBracket}
+                          disabled={isSyncingBracket}
+                          className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black font-black uppercase italic tracking-widest text-[9px] px-4 py-2.5 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(249,115,22,0.15)] disabled:opacity-50"
+                        >
+                          {isSyncingBracket ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
+                              Sincronizando...
+                            </>
+                          ) : (
+                            <>
+                              <Database className="w-3.5 h-3.5 text-black" />
+                              Sincronizar Eliminatorias
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="hidden lg:flex items-center gap-6">
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sedes</p>
+                        <p className="text-sm font-black text-white italic">MÉXICO • USA • CANADÁ</p>
+                      </div>
+                      <div className="w-px h-10 bg-white/10" />
+                      <Trophy size={40} className="text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.3)]" />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          )}
+
+                {isBracketEmpty && (
+                  <div className="max-w-7xl mx-auto px-8 mb-12">
+                    <div className="bg-orange-500/10 border border-orange-500/20 rounded-[2.5rem] p-8 md:p-10 flex flex-col md:flex-row items-center justify-between gap-8 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                      <div className="space-y-3 text-center md:text-left flex-1">
+                        <span className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-500 text-[9px] font-black uppercase tracking-widest italic">
+                          <Trophy size={10} className="text-orange-500" />
+                          ACTUALIZACIÓN REQUERIDA
+                        </span>
+                        <h3 className="text-2xl font-black text-white uppercase italic tracking-tight">
+                          ¿No ves las selecciones oficiales jugando?
+                        </h3>
+                        <p className="text-sm text-zinc-400 font-bold max-w-2xl leading-relaxed">
+                          Sincroniza el árbol de eliminatorias en un solo clic con los partidos reales de la Fase Final. El sistema cargará automáticamente los 32 países reales clasificados, las banderas y los puntajes oficiales de la API de RapidAPI (o el sembrado oficial del World Cup 2026).
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleSyncBracket}
+                        disabled={isSyncingBracket}
+                        className="shrink-0 flex items-center gap-3 bg-orange-500 hover:bg-orange-600 text-black font-black uppercase italic tracking-widest text-xs px-8 py-5 rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_35px_rgba(249,115,22,0.25)] disabled:opacity-50"
+                      >
+                        {isSyncingBracket ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-black" />
+                            Sincronizando...
+                          </>
+                        ) : (
+                          <>
+                            <Database className="w-4 h-4 text-black" />
+                            Cargar Equipos Reales
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="relative">
+                  <TournamentBracket 
+                    rounds={bracketRounds} 
+                    onUpdateScore={handleUpdateBracketScore}
+                    onSetWinner={handleSetWinnerAtSlot}
+                  />
+                </div>
+
+                <div className="max-w-7xl mx-auto px-8 py-20 text-center">
+                  <motion.div
+                    animate={{ y: [0, -10, 0] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    <Trophy size={80} className="mx-auto text-orange-500 mb-6 drop-shadow-[0_0_30px_rgba(249,115,22,0.4)]" />
+                  </motion.div>
+                  <div className="space-y-2">
+                    <p className="text-xl font-black text-white italic uppercase tracking-[0.2em]">El camino a la gloria eterna</p>
+                    <p className="text-xs font-bold text-zinc-600 uppercase tracking-[0.5em]">Predice el campeón del mundo</p>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })()}
 
           {activeTab === 'ranking' && (
             <motion.div 

@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import { WORLD_CUP_TEAMS } from './src/lib/constants';
-import { MOCK_MATCHES } from './src/lib/mockData';
+import { MOCK_MATCHES, getInitialBracket } from './src/lib/mockData';
 
 dotenv.config();
 
@@ -140,11 +140,167 @@ app.get('/api/football-data/matches', async (req, res) => {
   }
 });
 
+const CURATED_KNOCKOUT_MATCHES = [
+  // Round of 32
+  { home: 'KOR', away: 'CAN', phase: 'round_32', date: '2026-06-28T18:00:00Z', group: 'Estadio Los Angeles', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'BRA', away: 'JPN', phase: 'round_32', date: '2026-06-29T18:00:00Z', group: 'Estadio Houston', home_score: 3, away_score: 1, status: 'finished' },
+  { home: 'GER', away: 'BEL', phase: 'round_32', date: '2026-06-29T21:00:00Z', group: 'Estadio Boston', home_score: 2, away_score: 1, status: 'finished' },
+  { home: 'NED', away: 'MAR', phase: 'round_32', date: '2026-06-29T15:00:00Z', group: 'Estadio Monterrey', home_score: 1, away_score: 0, status: 'finished' },
+  { home: 'ECU', away: 'SEN', phase: 'round_32', date: '2026-06-30T18:00:00Z', group: 'Estadio Dallas', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'FRA', away: 'USA', phase: 'round_32', date: '2026-06-30T21:00:00Z', group: 'Estadio N.Y./N.J.', home_score: 2, away_score: 0, status: 'finished' },
+  { home: 'MEX', away: 'SWE', phase: 'round_32', date: '2026-06-30T15:00:00Z', group: 'Estadio Ciudad de México', home_score: 2, away_score: 1, status: 'finished' },
+  { home: 'ENG', away: 'COL', phase: 'round_32', date: '2026-07-01T18:00:00Z', group: 'Estadio Atlanta', home_score: 1, away_score: 1, status: 'finished' },
+  { home: 'EGY', away: 'SUI', phase: 'round_32', date: '2026-07-01T21:00:00Z', group: 'Estadio Seattle', home_score: 0, away_score: 2, status: 'finished' },
+  { home: 'TUR', away: 'ITA', phase: 'round_32', date: '2026-07-01T15:00:00Z', group: 'Estadio Bahía S.F.', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'ESP', away: 'AUT', phase: 'round_32', date: '2026-07-02T18:00:00Z', group: 'Estadio Los Angeles', home_score: 3, away_score: 0, status: 'finished' },
+  { home: 'POR', away: 'CRO', phase: 'round_32', date: '2026-07-02T21:00:00Z', group: 'Estadio Toronto', home_score: 2, away_score: 1, status: 'finished' },
+  { home: 'QAT', away: 'ARG', phase: 'round_32', date: '2026-07-03T18:00:00Z', group: 'Estadio Vancouver', home_score: 0, away_score: 4, status: 'finished' },
+  { home: 'PAR', away: 'URU', phase: 'round_32', date: '2026-07-03T21:00:00Z', group: 'Estadio Dallas', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'ALG', away: 'TUN', phase: 'round_32', date: '2026-07-03T15:00:00Z', group: 'Estadio Miami', home_score: 0, away_score: 1, status: 'finished' },
+  { home: 'UZB', away: 'PAN', phase: 'round_32', date: '2026-07-03T23:00:00Z', group: 'Estadio Kansas City', home_score: 2, away_score: 1, status: 'finished' },
+
+  // Round of 16
+  { home: 'CAN', away: 'BRA', phase: 'round_16', date: '2026-07-04T18:00:00Z', group: 'Estadio Houston', home_score: 1, away_score: 3, status: 'finished' },
+  { home: 'GER', away: 'NED', phase: 'round_16', date: '2026-07-04T21:00:00Z', group: 'Estadio Filadelfia', home_score: 2, away_score: 1, status: 'finished' },
+  { home: 'SEN', away: 'FRA', phase: 'round_16', date: '2026-07-05T18:00:00Z', group: 'Estadio N.Y./N.J.', home_score: 0, away_score: 2, status: 'finished' },
+  { home: 'MEX', away: 'ENG', phase: 'round_16', date: '2026-07-05T21:00:00Z', group: 'Estadio Ciudad de México', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'SUI', away: 'ITA', phase: 'round_16', date: '2026-07-06T18:00:00Z', group: 'Estadio Dallas', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'ESP', away: 'POR', phase: 'round_16', date: '2026-07-06T21:00:00Z', group: 'Estadio Seattle', home_score: 2, away_score: 1, status: 'finished' },
+  { home: 'ARG', away: 'URU', phase: 'round_16', date: '2026-07-07T18:00:00Z', group: 'Estadio Atlanta', home_score: 3, away_score: 2, status: 'finished' },
+  { home: 'TUN', away: 'UZB', phase: 'round_16', date: '2026-07-07T21:00:00Z', group: 'Estadio Vancouver', home_score: 0, away_score: 1, status: 'finished' },
+
+  // Quarter Finals
+  { home: 'BRA', away: 'GER', phase: 'quarter', date: '2026-07-09T18:00:00Z', group: 'Estadio Boston', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'FRA', away: 'ENG', phase: 'quarter', date: '2026-07-10T21:00:00Z', group: 'Estadio Los Angeles', home_score: 2, away_score: 0, status: 'finished' },
+  { home: 'ITA', away: 'ESP', phase: 'quarter', date: '2026-07-11T18:00:00Z', group: 'Estadio Miami', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'ARG', away: 'UZB', phase: 'quarter', date: '2026-07-11T21:00:00Z', group: 'Estadio Kansas City', home_score: 4, away_score: 1, status: 'finished' },
+
+  // Semi Finals
+  { home: 'GER', away: 'FRA', phase: 'semi', date: '2026-07-14T18:00:00Z', group: 'Estadio Dallas', home_score: 1, away_score: 2, status: 'finished' },
+  { home: 'ESP', away: 'ARG', phase: 'semi', date: '2026-07-15T21:00:00Z', group: 'Estadio Atlanta', home_score: 2, away_score: 3, status: 'finished' },
+
+  // Final
+  { home: 'FRA', away: 'ARG', phase: 'final', date: '2026-07-19T20:00:00Z', group: 'Estadio N.Y./N.J.', home_score: 2, away_score: 3, status: 'finished' }
+];
+
+async function buildAndSaveBracket(supabaseAdmin: any, dbMatchesOverride?: any[]) {
+  try {
+    console.log('[BRACKET SYNC] Rebuilding interactive tournament bracket...');
+    
+    let dbMatches = dbMatchesOverride;
+    if (!dbMatches) {
+      // Fetch group matches & knockout matches
+      const { data, error: matchesErr } = await supabaseAdmin
+        .from('matches')
+        .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+        .order('start_at', { ascending: true });
+
+      if (matchesErr) {
+        console.error('[BRACKET SYNC] Error fetching matches:', matchesErr);
+        return [];
+      }
+      dbMatches = data || [];
+    }
+
+    const initialBracket = getInitialBracket();
+
+    // Filter matches for each phase
+    const r32Matches = dbMatches.filter((m: any) => m.phase === 'round_32');
+    const r16Matches = dbMatches.filter((m: any) => m.phase === 'round_16');
+    const qfMatches = dbMatches.filter((m: any) => m.phase === 'quarter');
+    const sfMatches = dbMatches.filter((m: any) => m.phase === 'semi');
+    const fMatches = dbMatches.filter((m: any) => m.phase === 'final');
+    
+    const mapTeam = (teamData: any) => {
+      if (!teamData) return null;
+      return {
+        id: teamData.id,
+        name: teamData.name,
+        code: teamData.code,
+        flag_url: teamData.flag_url,
+        group_name: teamData.group_name
+      };
+    };
+
+    const mapBracketMatch = (templateMatch: any, realMatch: any) => {
+      if (!realMatch) return templateMatch;
+      return {
+        ...templateMatch,
+        homeTeam: mapTeam(realMatch.home_team),
+        awayTeam: mapTeam(realMatch.away_team),
+        homeScore: realMatch.home_score !== null && realMatch.home_score !== undefined ? realMatch.home_score.toString() : '',
+        awayScore: realMatch.away_score !== null && realMatch.away_score !== undefined ? realMatch.away_score.toString() : '',
+        status: realMatch.status === 'finished' ? 'finished' : 'pending',
+        date: new Date(realMatch.start_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }).toUpperCase(),
+        location: realMatch.group_name || templateMatch.location
+      };
+    };
+
+    // Populate rounds
+    const updatedRounds = initialBracket.map((round: any) => {
+      const roundName = round.name;
+      let pool: any[] = [];
+      if (roundName === 'R32') pool = r32Matches;
+      else if (roundName === 'R16') pool = r16Matches;
+      else if (roundName === 'CUARTOS') pool = qfMatches;
+      else if (roundName === 'SEMIFINAL') pool = sfMatches;
+      else if (roundName === 'FINAL') pool = fMatches;
+
+      // Sort pool ascending by start_at to maintain chronological mapping
+      pool.sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+
+      const updatedMatches = round.matches.map((templateMatch: any, index: number) => {
+        return mapBracketMatch(templateMatch, pool[index]);
+      });
+
+      return {
+        ...round,
+        matches: updatedMatches
+      };
+    });
+
+    const { error: saveErr } = await supabaseAdmin
+      .from('tournament_metadata')
+      .upsert({ key: 'bracket', data: updatedRounds, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+
+    if (saveErr) {
+      console.error('[BRACKET SYNC] Error saving bracket:', saveErr);
+    } else {
+      console.log('[BRACKET SYNC] Successfully updated bracket data in tournament_metadata.');
+    }
+
+    return updatedRounds;
+  } catch (err: any) {
+    console.error('[BRACKET SYNC] Exception building bracket:', err);
+    return [];
+  }
+}
+
 // Sync matches to Supabase
 app.post('/api/sync-matches', async (req, res) => {
   const supabaseAdmin = getSupabaseAdmin(req);
   if (!supabaseAdmin) {
     return res.status(500).json({ error: 'Supabase admin not configured' });
+  }
+
+  // Ensure all 48 teams exist in the database with correct codes and groups
+  try {
+    const teamsToUpsert = WORLD_CUP_TEAMS.map(t => ({
+      name: t.name,
+      code: t.code,
+      flag_url: t.flag_url,
+      group_name: t.group_name
+    }));
+    const { error: upsertTeamsError } = await supabaseAdmin
+      .from('teams')
+      .upsert(teamsToUpsert, { onConflict: 'code' });
+    if (upsertTeamsError) {
+      console.error('[SYNC] Error seeding teams before sync:', upsertTeamsError);
+    } else {
+      console.log('[SYNC] Successfully verified/seeded all World Cup 2026 teams in database.');
+    }
+  } catch (err) {
+    console.error('[SYNC] Exception seeding teams:', err);
   }
 
   // Ensure retired teams and matches are cleaned up before sync
@@ -216,9 +372,10 @@ app.post('/api/sync-matches', async (req, res) => {
   const getPhaseFromRound = (round: string): string => {
     const r = round.toLowerCase();
     if (r.includes('group')) return 'group';
-    if (r.includes('16') || r.includes('eighth')) return 'round_16';
-    if (r.includes('quarter')) return 'quarter';
-    if (r.includes('semi')) return 'semi';
+    if (r.includes('32') || r.includes('sixteenth') || r.includes('1/16')) return 'round_32';
+    if (r.includes('16') || r.includes('eighth') || r.includes('1/8')) return 'round_16';
+    if (r.includes('quarter') || r.includes('1/4')) return 'quarter';
+    if (r.includes('semi') || r.includes('1/2')) return 'semi';
     if (r.includes('final')) return 'final';
     return 'group';
   };
@@ -395,62 +552,37 @@ app.post('/api/sync-matches', async (req, res) => {
       if (inserted) results.push({ id: inserted[0].id, status: 'inserted' });
     }
 
-    res.json({ success: true, source: sourceUsed, count: results.length, details: results });
+    const updatedRounds = await buildAndSaveBracket(supabaseAdmin);
+
+    const { data: finalMatches } = await supabaseAdmin
+      .from('matches')
+      .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+      .order('start_at', { ascending: true });
+
+    res.json({ 
+      success: true, 
+      source: sourceUsed, 
+      count: results.length, 
+      details: results,
+      matches: finalMatches || [],
+      bracket: updatedRounds
+    });
   } catch (error: any) {
-    console.warn('API-Football sync failed, falling back to local High-Fidelity 2026 World Cup Curated Fixture Seeder:', error.message);
+    console.error('API-Football (RapidAPI) sync failed:', error.message);
     
-    try {
-      const { data: teams, error: teamsErr } = await supabaseAdmin.from('teams').select('*');
-      if (teamsErr) throw teamsErr;
-
-      const teamMap = new Map(teams.map((t: any) => [t.code.toUpperCase(), t.id]));
-      const localResults = [];
-
-      // Clean existing matches (which might be the wrong 2022 season matches!)
-      console.log('Wiping database matches to load high-fidelity curated 2026 World Cup opening matches...');
-      await supabaseAdmin.from('predictions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabaseAdmin.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-
-      for (const m of MOCK_MATCHES) {
-        const homeCode = (m.home_team?.code || m.home_team_id || '').toUpperCase();
-        const awayCode = (m.away_team?.code || m.away_team_id || '').toUpperCase();
-
-        const homeId = teamMap.get(homeCode);
-        const awayId = teamMap.get(awayCode);
-
-        if (!homeId || !awayId) {
-          console.warn(`Fallback Mapping: Skipped match between [${homeCode}] and [${awayCode}] due to missing team configuration.`);
-          continue;
-        }
-
-        const matchData = {
-          home_team_id: homeId,
-          away_team_id: awayId,
-          start_at: m.start_at || new Date().toISOString(),
-          phase: m.phase || 'group',
-          home_score: m.home_score,
-          away_score: m.away_score,
-          status: m.status || 'pending',
-          group_name: m.group_name
-        };
-
-        const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
-        if (inserted && inserted.length > 0) {
-          localResults.push({ id: inserted[0].id, status: 'inserted' });
-        }
-      }
-      
-      res.json({ 
-        success: true, 
-        source: 'Calendario Real Curado Mundial 2026 (Local High-Fidelity Fallback)', 
-        count: localResults.length, 
-        details: localResults,
-        wasFallback: true 
-      });
-    } catch (fallbackError: any) {
-      console.error('High-Fidelity 2026 match fallback generation failed:', fallbackError);
-      res.status(500).json({ error: error.message || 'Error executing match seeding fallback' });
+    let errorMsg = error.message || 'Error desconocido';
+    if (errorMsg.includes('subscribed') || errorMsg.includes('403') || errorMsg.includes('not active')) {
+      errorMsg = 'No estás suscrito al servicio "API-Football" en RapidAPI. Por favor, asegúrate de haber activado el plan (incluso el gratuito) para este endpoint con tu clave API en: https://rapidapi.com/api-sports/api/api-football';
+    } else if (errorMsg.includes('Subscription') || errorMsg.includes('unsubscribed')) {
+      errorMsg = 'Debes suscribirte al feed de API-Football en RapidAPI para poder descargar partidos reales.';
     }
+
+    res.status(403).json({ 
+      success: false, 
+      error: errorMsg,
+      details: 'El modo de datos simulados (mock fallback) se ha desactivado a petición del usuario. Configura tu credencial RAPIDAPI_FOOTBALL_KEY para obtener datos reales.',
+      wasFallback: false
+    });
   }
 });
 
@@ -957,8 +1089,12 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log('=== ENVIRONMENT VARIABLES ===');
- 
+    console.log('--- STARTUP ENVIRONMENT DIAGNOSTICS ---');
+    console.log('VITE_SUPABASE_URL is configured:', !!process.env.VITE_SUPABASE_URL);
+    console.log('SUPABASE_SERVICE_ROLE_KEY is configured:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+    console.log('VITE_SUPABASE_ANON_KEY is configured:', !!process.env.VITE_SUPABASE_ANON_KEY);
+    console.log('Keys in process.env containing VITE, KEY or URL:', Object.keys(process.env).filter(k => k.includes('VITE_') || k.includes('KEY') || k.includes('URL') || k.includes('SUPABASE')));
+    console.log('----------------------------------------');
   });
 }
 
