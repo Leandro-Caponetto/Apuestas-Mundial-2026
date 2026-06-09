@@ -121,9 +121,19 @@ export const dbService = {
     if (!data) {
       // El perfil no existe todavía, lo creamos
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const metaName = user?.user_metadata?.full_name || 'JUGADOR NUEVO';
+        const cleanUsername = user?.email ? user.email.split('@')[0] : 'jugador';
+
         const { data: newProfile, error: createError } = await supabase
           .from('profiles')
-          .insert([{ id: userId, points: 0, balance: 0, username: 'JUGADOR NUEVO' }])
+          .insert([{ 
+            id: userId, 
+            points: 0, 
+            balance: 0, 
+            username: cleanUsername,
+            full_name: metaName
+          }])
           .select()
           .single();
         

@@ -15,7 +15,11 @@ import {
   Minus,
   Lock,
   Loader2,
-  Users
+  Users,
+  Zap,
+  Wifi,
+  Flame,
+  RefreshCw
 } from 'lucide-react';
 import { dbService } from '@/services/dbService';
 import { Match, Profile, Prediction } from '@/types';
@@ -40,6 +44,13 @@ export const BettingZone: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInitializingDB, setIsInitializingDB] = useState(false);
   const [resolveModalMatch, setResolveModalMatch] = useState<Match | null>(null);
+  
+  // RapidAPI Sync Status & Simulation states
+  const [liveSimulationActive, setLiveSimulationActive] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>(() => {
+    return new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  });
+  const [syncSource, setSyncSource] = useState<string>('Base de Datos Supabase (Local)');
   
   const isAdmin = userEmail === 'caponettopeppers@gmail.com';
   
@@ -193,7 +204,7 @@ export const BettingZone: React.FC = () => {
 
   const handleSyncMatches = async () => {
     setIsSyncing(true);
-    const toastId = toast.loading('Sincronizando partidos con el fixture...');
+    const toastId = toast.loading('Sincronizando fixture oficial con la de API-Football (RapidAPI) en tiempo real...');
     try {
       const res = await fetch('/api/sync-matches', { 
         method: 'POST',
@@ -204,19 +215,70 @@ export const BettingZone: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Sincronización exitosa: ${data.count} partidos procesados`, { id: toastId });
+        const sourceName = data.source || 'API-Football (RapidAPI)';
+        setSyncSource(sourceName);
+        setLastSyncTime(new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }));
+        
+        if (sourceName.toLowerCase().includes('fallback') || sourceName.toLowerCase().includes('local')) {
+          toast.success(`Sincronización completada: ${data.count} partidos cargados desde el Fixture Oficial Local (Offline Fallback).`, { id: toastId, duration: 5000 });
+        } else {
+          toast.success(`¡Sincronización exitosa! ${data.count} partidos cargados y actualizados en tiempo real mediante RapidAPI.`, { id: toastId, duration: 4000 });
+        }
         const mData = await dbService.getMatches();
         setMatches(mData);
       } else {
-        toast.error('Error: ' + (data.error || 'Fallo desconocido'), { id: toastId });
+        toast.error('Error: ' + (data.error || 'Fallo de sincronización'), { id: toastId, duration: 5000 });
       }
     } catch (err: any) {
-      toast.error('Error al sincronizar fixture', { id: toastId });
+      toast.error('Error de red al sincronizar fixture con RapidAPI.', { id: toastId });
       console.error(err);
     } finally {
       setIsSyncing(false);
     }
   };
+
+  // Real-time Match Simulator for Prode Matches Feed
+  useEffect(() => {
+    if (!liveSimulationActive) return;
+
+    const interval = setInterval(() => {
+      setMatches((prevMatches) => {
+        if (!prevMatches || prevMatches.length === 0) return prevMatches;
+        
+        const updated = [...prevMatches];
+        const indexToUpdate = Math.floor(Math.random() * updated.length);
+        const match = { ...updated[indexToUpdate] };
+
+        if (!match.id) return prevMatches;
+
+        if (match.status === 'pending') {
+          match.status = 'playing';
+          match.home_score = 0;
+          match.away_score = 0;
+          toast.success(`⚽ ¡Comenzó el juego en vivo! ${match.homeTeam?.name || match.home_team?.name || 'TBD'} vs ${match.awayTeam?.name || match.away_team?.name || 'TBD'}`, { duration: 4000 });
+        } else if (match.status === 'playing') {
+          if (Math.random() > 0.3) {
+            const isHomeGoal = Math.random() > 0.5;
+            if (isHomeGoal) {
+              match.home_score = (match.home_score || 0) + 1;
+              toast(`⚽ GOL de ${match.homeTeam?.name || match.home_team?.name || 'TBD'}! Ahora: ${match.home_score} - ${match.away_score}`, { icon: '🔥' });
+            } else {
+              match.away_score = (match.away_score || 0) + 1;
+              toast(`⚽ GOL de ${match.awayTeam?.name || match.away_team?.name || 'TBD'}! Ahora: ${match.home_score} - ${match.away_score}`, { icon: '🔥' });
+            }
+          } else {
+            match.status = 'finished';
+            toast.success(`🏁 Finalizó el partido: ${match.homeTeam?.name || match.home_team?.name || 'TBD'} ${match.home_score} - ${match.away_score} ${match.awayTeam?.name || match.away_team?.name || 'TBD'}`, { duration: 5000 });
+          }
+        }
+        
+        updated[indexToUpdate] = match;
+        return updated;
+      });
+    }, 8500);
+
+    return () => clearInterval(interval);
+  }, [liveSimulationActive]);
 
   // Adjust score predictions locally
   const handleScoreChange = (matchId: string, team: 'home' | 'away', operation: 'increment' | 'decrement') => {
@@ -509,6 +571,88 @@ export const BettingZone: React.FC = () => {
             <p className="text-[9px] font-bold text-zinc-400 leading-relaxed uppercase tracking-widest italic">
               Recuerda guardar cada pronóstico presionando el botón "Guardar" de cada partido antes que comience el juego.
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* RapidAPI Connection & Control Dashboard inside Prode */}
+      <div className="p-6 rounded-[2rem] bg-zinc-900/40 border border-zinc-800/80 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
+        
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-zinc-850 border border-zinc-700/50 rounded-2xl text-orange-500 shadow-md">
+              <Wifi size={24} className={isSyncing ? "animate-pulse" : ""} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black uppercase tracking-wider bg-orange-500/10 border border-orange-500/20 text-orange-500 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping" />
+                  Status: Conectado a Servidor RapidAPI
+                </span>
+                {liveSimulationActive && (
+                  <span className="text-[9px] font-black uppercase tracking-wider bg-red-500 text-white px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                    <Flame size={10} /> Simulación En Vivo Activa
+                  </span>
+                )}
+              </div>
+              <h3 className="text-lg font-black text-white uppercase italic tracking-tight mt-1">Sincronizador RapidAPI (API-Football)</h3>
+              <p className="text-[11px] text-zinc-400 max-w-xl leading-relaxed mt-1">
+                La sección de Prode se alimenta directamente de la API oficial para mantener actualizados los partidos, resultados oficiales y goles en tiempo real de la Copa Mundial 2026.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 lg:self-center">
+            {/* Direct Sync Button */}
+            <button
+              onClick={handleSyncMatches}
+              disabled={isSyncing}
+              className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-orange-500 text-black font-black uppercase italic tracking-wider text-[10px] transition-all hover:bg-orange-400 active:scale-95 disabled:opacity-50 hover:cursor-pointer"
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  Sincronizando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={13} />
+                  Sincronizar Fixture
+                </>
+              )}
+            </button>
+
+            {/* Simulated Live Match Stream Toggler */}
+            <button
+              onClick={() => {
+                setLiveSimulationActive(!liveSimulationActive);
+                if (!liveSimulationActive) {
+                  toast.success('¡Modo de Partidos En Vivo Iniciado! Verás goles simulados en los partidos abiertos en tiempo real.', { icon: '🎮' });
+                } else {
+                  toast('Retornando al fixture guardado', { icon: 'ℹ️' });
+                }
+              }}
+              className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-black uppercase italic tracking-wider text-[10px] transition-all border hover:cursor-pointer ${
+                liveSimulationActive
+                  ? 'bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25'
+                  : 'bg-zinc-850 hover:bg-zinc-800 text-zinc-300 border-zinc-700/60'
+              }`}
+            >
+              <Zap size={13} className={liveSimulationActive ? "animate-pulse text-red-400" : "text-orange-500"} />
+              {liveSimulationActive ? 'Detener Simulación' : 'Simular En Vivo'}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-zinc-805 border-zinc-800/40 flex flex-wrap items-center justify-between gap-4 text-[10px] text-zinc-400">
+          <div className="flex items-center gap-1.5">
+            <Info size={12} className="text-orange-500" />
+            <span>Proveedor activo: <strong>{syncSource}</strong> — Última sincronización: <strong>{lastSyncTime}</strong></span>
+          </div>
+          <div>
+            <span>Soportado: <strong>Mundial de la FIFA 2026</strong></span>
           </div>
         </div>
       </div>

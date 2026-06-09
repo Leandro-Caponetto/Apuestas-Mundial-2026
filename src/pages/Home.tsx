@@ -32,6 +32,7 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [usernameInput, setUsernameInput] = useState('');
+  const [fullNameInput, setFullNameInput] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [logoError, setLogoError] = useState(false);
 
@@ -219,19 +220,26 @@ export default function Home() {
   };
 
   const handleUpdateUsername = async () => {
-    if (!user || !usernameInput.trim()) return;
+    if (!user || !usernameInput.trim()) {
+      toast.error('El nombre de usuario es obligatorio');
+      return;
+    }
     
-    const loadingToast = toast.loading('Actualizando nombre...');
+    const loadingToast = toast.loading('Actualizando perfil...');
     try {
-      await dbService.updateProfile(user.id, { username: usernameInput.trim() });
+      await dbService.updateProfile(user.id, { 
+        username: usernameInput.trim(),
+        full_name: fullNameInput.trim() || undefined
+      });
       await loadProfile(user.id);
       await loadRanking();
       setUsernameInput('');
+      setFullNameInput('');
       setShowProfileModal(false);
-      toast.success('Nombre actualizado', { id: loadingToast });
+      toast.success('Pefil actualizado correctamente', { id: loadingToast });
     } catch (err) {
       console.error(err);
-      toast.error('Error al actualizar nombre', { id: loadingToast });
+      toast.error('Error al actualizar el perfil', { id: loadingToast });
     }
   };
 
@@ -377,6 +385,7 @@ export default function Home() {
                     className="relative w-10 h-10 rounded-full border border-white/10 overflow-hidden flex items-center justify-center bg-zinc-950 cursor-pointer hover:scale-105 transition-transform"
                     onClick={() => {
                       setUsernameInput(profile?.username || '');
+                      setFullNameInput(profile?.full_name || '');
                       setShowProfileModal(true);
                     }}
                    >
@@ -832,15 +841,28 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="w-full space-y-1.5">
-                    <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest italic ml-3">Nombre de Usuario</label>
-                    <input 
-                      type="text"
-                      placeholder="TU NOMBRE"
-                      value={usernameInput}
-                      onChange={(e) => setUsernameInput(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-4 text-xs font-black italic tracking-widest text-white uppercase outline-none focus:border-orange-500 transition-all"
-                    />
+                  <div className="w-full space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest italic ml-3">Nombre de Usuario (@username)</label>
+                      <input 
+                        type="text"
+                        placeholder="Nombre de Usuario"
+                        value={usernameInput}
+                        onChange={(e) => setUsernameInput(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-4 text-xs font-black italic tracking-widest text-white uppercase outline-none focus:border-orange-500 transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest italic ml-3">Nombre Completo</label>
+                      <input 
+                        type="text"
+                        placeholder="Tu Nombre"
+                        value={fullNameInput}
+                        onChange={(e) => setFullNameInput(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-5 py-4 text-xs font-black italic tracking-widest text-white uppercase outline-none focus:border-orange-500 transition-all"
+                      />
+                    </div>
                   </div>
                 </div>
 

@@ -79,7 +79,28 @@ export const TeamExplorer: React.FC = () => {
     try {
       const response = await fetch('/api/rapidapi/live-matches');
       if (!response.ok) {
-        throw new Error(`Error en el servidor: ${response.statusText}`);
+        let errorMsg = `Error de red (${response.status})`;
+        try {
+          const errData = await response.json();
+          if (errData.error) {
+            errorMsg = `${errData.error}`;
+            if (errData.details) {
+              try {
+                const parsedDetails = JSON.parse(errData.details);
+                if (parsedDetails.message) {
+                  errorMsg = `${errData.error}: ${parsedDetails.message}`;
+                } else {
+                  errorMsg = `${errData.error}: ${errData.details}`;
+                }
+              } catch (_) {
+                errorMsg = `${errData.error}: ${errData.details}`;
+              }
+            }
+          }
+        } catch (_) {
+          errorMsg = `Error en el servidor: ${response.statusText || response.status}`;
+        }
+        throw new Error(errorMsg);
       }
       const data = await response.json();
       if (data.response && data.response.length > 0) {
@@ -106,17 +127,49 @@ export const TeamExplorer: React.FC = () => {
       // Copa del Mundo League ID en API-Football es generalmente 1. Traemos la temporada 2022 para asegurar datos reales
       const response = await fetch('/api/rapidapi/teams?league=1&season=2022');
       if (!response.ok) {
-        throw new Error(`Error del servidor: ${response.statusText}`);
+        let errorMsg = `Error de red (${response.status})`;
+        try {
+          const errData = await response.json();
+          if (errData.error) {
+            errorMsg = `${errData.error}`;
+            if (errData.details) {
+              try {
+                const parsedDetails = JSON.parse(errData.details);
+                if (parsedDetails.message) {
+                  errorMsg = `${errData.error}: ${parsedDetails.message}`;
+                } else {
+                  errorMsg = `${errData.error}: ${errData.details}`;
+                }
+              } catch (_) {
+                errorMsg = `${errData.error}: ${errData.details}`;
+              }
+            }
+          }
+        } catch (_) {
+          errorMsg = `Error del servidor: ${response.statusText || response.status}`;
+        }
+        throw new Error(errorMsg);
       }
       const data = await response.json();
-      if (data.response) {
+      if (data.response && data.response.length > 0) {
         setRapidTeams(data.response);
       } else {
-        setRapidTeams([]);
+        throw new Error('La respuesta de la API no contiene selecciones de equipos reales.');
       }
     } catch (err: any) {
       console.error(err);
       setRapidTeamsError(err.message || 'Error al obtener selecciones desde RapidAPI.');
+      
+      // Graciously fallback to displaying our curated local teams formatted as RapidAPI teams
+      const mappedLocalTeams = WORLD_CUP_TEAMS.map((t, idx) => ({
+        team: {
+          id: 1000 + idx,
+          name: t.name,
+          logo: t.flag_url,
+          code: t.code
+        }
+      }));
+      setRapidTeams(mappedLocalTeams);
     } finally {
       setRapidTeamsLoading(false);
     }
@@ -603,11 +656,13 @@ export const TeamExplorer: React.FC = () => {
             ) : (
               <div>
                 {rapidTeamsError && (
-                  <div className="p-8 text-center bg-red-500/10 border border-red-500/20 text-red-500 rounded-3xl mb-6">
-                    <p className="font-extrabold uppercase italic tracking-widest mb-1 text-sm">Error de sincronización</p>
-                    <p className="text-xs text-red-400">{rapidTeamsError}</p>
-                    <p className="text-[10px] text-zinc-500 mt-4 leading-relaxed uppercase tracking-wider">
-                      Asegúrate de que tu clave de API RapidAPI esté configurada correctamente en el archivo .env o en el panel de control.
+                  <div className="p-6 text-center bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-3xl mb-6">
+                    <p className="font-extrabold uppercase italic tracking-widest mb-1 text-xs text-amber-400">Modo Sandbox / Local Fallback Activado</p>
+                    <p className="text-[10px] text-zinc-400 max-w-xl mx-auto mb-3">
+                      Sincronización fallback activada con los Equipos oficiales. El servidor detectó que la clave default de RapidAPI falló, está sin cuotas, o no se encuentra configurada ({rapidTeamsError}).
+                    </p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-wider">
+                      Para usar una conexión Real directa, configura tu clave <code className="text-white bg-zinc-800 px-1.5 py-0.5 rounded">RAPIDAPI_FOOTBALL_KEY</code> en tu panel de control o archivo .env.
                     </p>
                   </div>
                 )}
