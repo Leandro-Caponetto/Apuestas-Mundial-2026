@@ -15,12 +15,10 @@ import { supabase } from '@/lib/supabase';
 import { dbService } from '@/services/dbService';
 import { toast } from 'react-hot-toast';
 
-import logo from '../../public/assets/logo.svg'
-
-
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
 // Logo oficial con la copa (26 con el trofeo)
+const logo = 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Logo_de_la_Copa_Mundial_de_F%C3%BAtbol_2026.svg';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('grupos');
@@ -107,43 +105,68 @@ export default function Home() {
       return r.every(round => round.matches.every((m: any) => !m.homeTeam && !m.awayTeam));
     };
 
+    // Immediate cached UI loading
+    const localB = localStorage.getItem('synced_bracket');
+    if (localB) {
+      try {
+        const parsed = JSON.parse(localB);
+        if (parsed && !isBracketEmptyHelper(parsed)) {
+          setBracketRounds(parsed);
+        }
+      } catch (_) {}
+    } else {
+      setBracketRounds(getInitialBracket());
+    }
+
+    const localM = localStorage.getItem('synced_matches');
+    if (localM) {
+      try {
+        const parsed = JSON.parse(localM);
+        if (parsed && parsed.length > 0) {
+          // De-duplicate matches
+          const unique: any[] = [];
+          const seen = new Set<string>();
+          parsed.forEach((m: any) => {
+            const normDate = m.start_at ? new Date(m.start_at).toISOString().split('.')[0] + 'Z' : '';
+            const key = `${m.home_team_id}_${m.away_team_id}_${normDate}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              unique.push(m);
+            }
+          });
+          setMatches(unique);
+          setLoading(false);
+        }
+      } catch (_) {}
+    }
+
     // Data Subscriptions
     const unsubscribeBracket = dbService.subscribeBracket((rounds) => {
       if (isMountedRef.current) {
-        const localB = localStorage.getItem('synced_bracket');
-        let parsedLocal: any = null;
-        if (localB) {
-          try {
-            parsedLocal = JSON.parse(localB);
-          } catch (_) {}
-        }
-
-        if (parsedLocal && !isBracketEmptyHelper(parsedLocal)) {
-          setBracketRounds(parsedLocal);
-        } else if (rounds && !isBracketEmptyHelper(rounds)) {
+        if (rounds && !isBracketEmptyHelper(rounds)) {
           setBracketRounds(rounds);
-        } else {
-          setBracketRounds(getInitialBracket());
+          localStorage.setItem('synced_bracket', JSON.stringify(rounds));
         }
       }
     });
 
     const unsubscribeMatches = dbService.subscribeMatches((newMatches) => {
       if (!isMountedRef.current) return;
-      const localM = localStorage.getItem('synced_matches');
-      if (localM) {
-        try {
-          const parsed = JSON.parse(localM);
-          if (parsed && parsed.length > 0) {
-            setMatches(parsed);
-            setLoading(false);
-            return;
-          }
-        } catch (_) {}
-      }
       
       if (newMatches && newMatches.length > 0) {
-        setMatches(newMatches);
+        // De-duplicate matches
+        const unique: any[] = [];
+        const seen = new Set<string>();
+        newMatches.forEach((m: any) => {
+          const normDate = m.start_at ? new Date(m.start_at).toISOString().split('.')[0] + 'Z' : '';
+          const key = `${m.home_team_id}_${m.away_team_id}_${normDate}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(m);
+          }
+        });
+        setMatches(unique);
+        localStorage.setItem('synced_matches', JSON.stringify(unique));
         setLoading(false);
       } else {
         setMatches(MOCK_MATCHES);

@@ -276,6 +276,8 @@ async function buildAndSaveBracket(supabaseAdmin: any, dbMatchesOverride?: any[]
   }
 }
 
+let isSynchronizingGlobal = false;
+
 // Sync matches to Supabase
 app.post('/api/sync-matches', async (req, res) => {
   const supabaseAdmin = getSupabaseAdmin(req);
@@ -283,306 +285,324 @@ app.post('/api/sync-matches', async (req, res) => {
     return res.status(500).json({ error: 'Supabase admin not configured' });
   }
 
-  // Ensure all 48 teams exist in the database with correct codes and groups
-  try {
-    const teamsToUpsert = WORLD_CUP_TEAMS.map(t => ({
-      name: t.name,
-      code: t.code,
-      flag_url: t.flag_url,
-      group_name: t.group_name
-    }));
-    const { error: upsertTeamsError } = await supabaseAdmin
-      .from('teams')
-      .upsert(teamsToUpsert, { onConflict: 'code' });
-    if (upsertTeamsError) {
-      console.error('[SYNC] Error seeding teams before sync:', upsertTeamsError);
-    } else {
-      console.log('[SYNC] Successfully verified/seeded all World Cup 2026 teams in database.');
-    }
-  } catch (err) {
-    console.error('[SYNC] Exception seeding teams:', err);
+  if (isSynchronizingGlobal) {
+    return res.status(429).json({ error: 'Ya hay un proceso de sincronización oficial en progreso. Por favor, espera un momento.' });
   }
+  isSynchronizingGlobal = true;
 
-  // Ensure retired teams and matches are cleaned up before sync
-  await cleanRetiredTeams(supabaseAdmin);
-
-  // Dictionary mapping API-Football team names to our standard 3-letter codes
-  const nameToCode: Record<string, string> = {
-    'argentina': 'ARG',
-    'brazil': 'BRA',
-    'france': 'FRA',
-    'spain': 'ESP',
-    'germany': 'GER',
-    'belgium': 'BEL',
-    'portugal': 'POR',
-    'mexico': 'MEX',
-    'netherlands': 'NED',
-    'usa': 'USA',
-    'england': 'ENG',
-    'croatia': 'CRO',
-    'uruguay': 'URU',
-    'switzerland': 'SUI',
-    'denmark': 'DEN',
-    'senegal': 'SEN',
-    'japan': 'JPN',
-    'morocco': 'MAR',
-    'poland': 'POL',
-    'sweden': 'SWE',
-    'colombia': 'COL',
-    'canada': 'CAN',
-    'ecuador': 'ECU',
-    'saudi arabia': 'KSA',
-    'south korea': 'KOR',
-    'korea republic': 'KOR',
-    'ghana': 'GHA',
-    'cameroon': 'CMR',
-    'tunisia': 'TUN',
-    'costa rica': 'CRC',
-    'australia': 'AUS',
-    'qatar': 'QAT',
-    'iran': 'IRN',
-    'serbia': 'SRB',
-    'egypt': 'EGY',
-    'italy': 'ITA',
-    'nigeria': 'NGA',
-    'peru': 'PER',
-    'austria': 'AUT',
-    'panama': 'PAN',
-    'ukraine': 'UKR',
-    'ivory coast': 'CIV',
-    'paraguay': 'PAR',
-    'turkey': 'TUR',
-    'norway': 'NOR',
-    'algeria': 'ALG',
-    'greece': 'GRE',
-    'venezuela': 'VEN',
-    'mali': 'MLI'
-  };
-
-  const getGroupNameFromRound = (round: string): string | null => {
-    const match = round.match(/Group\s+([A-L])/i);
-    return match ? match[1].toUpperCase() : null;
-  };
-
-  const cleanGroupName = (group: string | null | undefined): string | null => {
-    if (!group) return null;
-    return group.replace(/^(grupo\s+|group\s+|grupo|group|group_)/i, '').trim().toUpperCase();
-  };
-
-  const getPhaseFromRound = (round: string): string => {
-    const r = round.toLowerCase();
-    if (r.includes('group')) return 'group';
-    if (r.includes('32') || r.includes('sixteenth') || r.includes('1/16')) return 'round_32';
-    if (r.includes('16') || r.includes('eighth') || r.includes('1/8')) return 'round_16';
-    if (r.includes('quarter') || r.includes('1/4')) return 'quarter';
-    if (r.includes('semi') || r.includes('1/2')) return 'semi';
-    if (r.includes('final')) return 'final';
-    return 'group';
-  };
-
-  const getStatusFromShort = (short: string): string => {
-    const s = short.toUpperCase();
-    if (['FT', 'AET', 'PEN'].includes(s)) return 'finished';
-    if (['1H', '2H', 'HT', 'ET', 'P', 'LIVE', 'INT'].includes(s)) return 'playing';
-    return 'pending';
-  };
-
-  const results = [];
-
-  // Try parsing from football-data.org if key exists
-  if (FOOTBALL_DATA_API_KEY) {
+  try {
+    // Ensure all 48 teams exist in the database with correct codes and groups
     try {
-      console.log('Attempting sync with Football-Data.org...');
-      const response = await fetch('https://api.football-data.org/v4/competitions/WC/matches', {
-        headers: { 'X-Auth-Token': FOOTBALL_DATA_API_KEY }
-      });
+      const teamsToUpsert = WORLD_CUP_TEAMS.map(t => ({
+        name: t.name,
+        code: t.code,
+        flag_url: t.flag_url,
+        group_name: t.group_name
+      }));
+      const { error: upsertTeamsError } = await supabaseAdmin
+        .from('teams')
+        .upsert(teamsToUpsert, { onConflict: 'code' });
+      if (upsertTeamsError) {
+        console.error('[SYNC] Error seeding teams before sync:', upsertTeamsError);
+      } else {
+        console.log('[SYNC] Successfully verified/seeded all World Cup 2026 teams in database.');
+      }
+    } catch (err) {
+      console.error('[SYNC] Exception seeding teams:', err);
+    }
 
-      if (response.ok) {
-        const apiData: any = await response.json();
-        const apiMatches = apiData.matches || [];
+    // Ensure retired teams and matches are cleaned up before sync
+    await cleanRetiredTeams(supabaseAdmin);
 
-        const phaseMap: Record<string, string> = {
-          'GROUP_STAGE': 'group',
-          'LAST_16': 'round_16',
-          'ROUND_OF_16': 'round_16',
-          'QUARTER_FINALS': 'quarter',
-          'SEMI_FINALS': 'semi',
-          'FINAL': 'final'
-        };
+    // Dictionary mapping API-Football team names to our standard 3-letter codes
+    const nameToCode: Record<string, string> = {
+      'argentina': 'ARG',
+      'brazil': 'BRA',
+      'france': 'FRA',
+      'spain': 'ESP',
+      'germany': 'GER',
+      'belgium': 'BEL',
+      'portugal': 'POR',
+      'mexico': 'MEX',
+      'netherlands': 'NED',
+      'usa': 'USA',
+      'england': 'ENG',
+      'croatia': 'CRO',
+      'uruguay': 'URU',
+      'switzerland': 'SUI',
+      'denmark': 'DEN',
+      'senegal': 'SEN',
+      'japan': 'JPN',
+      'morocco': 'MAR',
+      'poland': 'POL',
+      'sweden': 'SWE',
+      'colombia': 'COL',
+      'canada': 'CAN',
+      'ecuador': 'ECU',
+      'saudi arabia': 'KSA',
+      'south korea': 'KOR',
+      'korea republic': 'KOR',
+      'ghana': 'GHA',
+      'cameroon': 'CMR',
+      'tunisia': 'TUN',
+      'costa rica': 'CRC',
+      'australia': 'AUS',
+      'qatar': 'QAT',
+      'iran': 'IRN',
+      'serbia': 'SRB',
+      'egypt': 'EGY',
+      'italy': 'ITA',
+      'nigeria': 'NGA',
+      'peru': 'PER',
+      'austria': 'AUT',
+      'panama': 'PAN',
+      'ukraine': 'UKR',
+      'ivory coast': 'CIV',
+      'paraguay': 'PAR',
+      'turkey': 'TUR',
+      'norway': 'NOR',
+      'algeria': 'ALG',
+      'greece': 'GRE',
+      'venezuela': 'VEN',
+      'mali': 'MLI'
+    };
 
-        const { data: teams, error: teamsErr } = await supabaseAdmin.from('teams').select('*');
-        if (teamsErr) throw teamsErr;
+    const getGroupNameFromRound = (round: string): string | null => {
+      const match = round.match(/Group\s+([A-L])/i);
+      return match ? match[1].toUpperCase() : null;
+    };
 
-        const teamMap = new Map(teams.map((t: any) => [t.code, t.id]));
+    const cleanGroupName = (group: string | null | undefined): string | null => {
+      if (!group) return null;
+      return group.replace(/^(grupo\s+|group\s+|grupo|group|group_)/i, '').trim().toUpperCase();
+    };
 
-        for (const apiMatch of apiMatches) {
-          const homeId = teamMap.get(apiMatch.homeTeam.tla);
-          const awayId = teamMap.get(apiMatch.awayTeam.tla);
+    const getPhaseFromRound = (round: string): string => {
+      const r = round.toLowerCase();
+      if (r.includes('group')) return 'group';
+      if (r.includes('32') || r.includes('sixteenth') || r.includes('1/16')) return 'round_32';
+      if (r.includes('16') || r.includes('eighth') || r.includes('1/8')) return 'round_16';
+      if (r.includes('quarter') || r.includes('1/4')) return 'quarter';
+      if (r.includes('semi') || r.includes('1/2')) return 'semi';
+      if (r.includes('final')) return 'final';
+      return 'group';
+    };
 
-          if (!homeId || !awayId) continue;
+    const getStatusFromShort = (short: string): string => {
+      const s = short.toUpperCase();
+      if (['FT', 'AET', 'PEN'].includes(s)) return 'finished';
+      if (['1H', '2H', 'HT', 'ET', 'P', 'LIVE', 'INT'].includes(s)) return 'playing';
+      return 'pending';
+    };
 
-          const matchData = {
-            home_team_id: homeId,
-            away_team_id: awayId,
-            start_at: apiMatch.utcDate,
-            phase: phaseMap[apiMatch.stage] || apiMatch.stage.toLowerCase(),
-            home_score: apiMatch.score.fullTime.home,
-            away_score: apiMatch.score.fullTime.away,
-            status: apiMatch.status === 'FINISHED' ? 'finished' : (apiMatch.status === 'IN_PLAY' ? 'playing' : 'pending'),
-            group_name: cleanGroupName(apiMatch.group)
+    const results = [];
+
+    // Try parsing from football-data.org if key exists
+    if (FOOTBALL_DATA_API_KEY) {
+      try {
+        console.log('Attempting sync with Football-Data.org...');
+        const response = await fetch('https://api.football-data.org/v4/competitions/WC/matches', {
+          headers: { 'X-Auth-Token': FOOTBALL_DATA_API_KEY }
+        });
+
+        if (response.ok) {
+          const apiData: any = await response.json();
+          const apiMatches = apiData.matches || [];
+
+          const phaseMap: Record<string, string> = {
+            'GROUP_STAGE': 'group',
+            'LAST_16': 'round_16',
+            'ROUND_OF_16': 'round_16',
+            'QUARTER_FINALS': 'quarter',
+            'SEMI_FINALS': 'semi',
+            'FINAL': 'final'
           };
 
-          const { data: existing } = await supabaseAdmin
-            .from('matches')
-            .select('id')
-            .eq('home_team_id', homeId)
-            .eq('away_team_id', awayId)
-            .eq('start_at', apiMatch.utcDate)
-            .maybeSingle();
+          const { data: teams, error: teamsErr } = await supabaseAdmin.from('teams').select('*');
+          if (teamsErr) throw teamsErr;
 
-          if (existing) {
-            await supabaseAdmin.from('matches').update(matchData).eq('id', existing.id);
-            results.push({ id: existing.id, status: 'updated' });
-          } else {
-            const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
-            if (inserted) results.push({ id: inserted[0].id, status: 'inserted' });
+          const teamMap = new Map(teams.map((t: any) => [t.code, t.id]));
+
+          for (const apiMatch of apiMatches) {
+            const homeId = teamMap.get(apiMatch.homeTeam.tla);
+            const awayId = teamMap.get(apiMatch.awayTeam.tla);
+
+            if (!homeId || !awayId) continue;
+
+            const matchData = {
+              home_team_id: homeId,
+              away_team_id: awayId,
+              start_at: apiMatch.utcDate,
+              phase: phaseMap[apiMatch.stage] || apiMatch.stage.toLowerCase(),
+              home_score: apiMatch.score.fullTime.home,
+              away_score: apiMatch.score.fullTime.away,
+              status: apiMatch.status === 'FINISHED' ? 'finished' : (apiMatch.status === 'IN_PLAY' ? 'playing' : 'pending'),
+              group_name: cleanGroupName(apiMatch.group)
+            };
+
+            const { data: existing } = await supabaseAdmin
+              .from('matches')
+              .select('id')
+              .eq('home_team_id', homeId)
+              .eq('away_team_id', awayId)
+              .eq('start_at', apiMatch.utcDate)
+              .maybeSingle();
+
+            if (existing) {
+              await supabaseAdmin.from('matches').update(matchData).eq('id', existing.id);
+              results.push({ id: existing.id, status: 'updated' });
+            } else {
+              const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
+              if (inserted) results.push({ id: inserted[0].id, status: 'inserted' });
+            }
           }
+
+          return res.json({ success: true, source: 'football-data.org', count: results.length, details: results });
         }
-
-        return res.json({ success: true, source: 'football-data.org', count: results.length, details: results });
+      } catch (err: any) {
+        console.warn('Football-Data.org sync failed, falling back to API-Football:', err.message);
       }
-    } catch (err: any) {
-      console.warn('Football-Data.org sync failed, falling back to API-Football:', err.message);
-    }
-  }
-
-  // Fallback / Default sync with API-Football (RapidAPI)
-  try {
-    console.log('Syncing with API-Football (RapidAPI)...');
-    const key = process.env.RAPIDAPI_FOOTBALL_KEY || '4c01bef4c4msh80d107a10f214afp1173e6jsn12be3ea56581';
-    
-    let fixtures: any[] = [];
-    let sourceUsed = 'API-Football (RapidAPI) Season 2026';
-
-    console.log('Fetching API-Football Season 2026...');
-    const response = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?league=1&season=2026', {
-      headers: {
-        'x-rapidapi-key': key,
-        'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
-      }
-    });
-    if (response.ok) {
-      const apiData = await response.json();
-      if (apiData.response && apiData.response.length > 0) {
-        fixtures = apiData.response;
-        console.log(`Successfully fetched ${fixtures.length} matches for World Cup 2026!`);
-      } else {
-        console.log('No matches returned for World Cup 2026, or plan subscription restriction. Throwing to fallback...');
-        throw new Error('Empty 2026 response');
-      }
-    } else {
-      throw new Error(`2026 fetch responded with status code: ${response.status}`);
     }
 
-    // Attempt to merge any actual live World Cup fixtures if they are playing right now
+    // Fallback / Default sync with API-Football (RapidAPI)
     try {
-      console.log('Checking for active live World Cup fixtures (live=all)...');
-      const liveResponse = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?league=1&live=all', {
+      console.log('Syncing with API-Football (RapidAPI)...');
+      const key = process.env.RAPIDAPI_FOOTBALL_KEY || '4c01bef4c4msh80d107a10f214afp1173e6jsn12be3ea56581';
+      
+      let fixtures: any[] = [];
+      let sourceUsed = 'API-Football (RapidAPI) Season 2026';
+
+      console.log('Fetching API-Football Season 2026...');
+      const response = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?league=1&season=2026', {
         headers: {
           'x-rapidapi-key': key,
           'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
         }
       });
-      if (liveResponse.ok) {
-        const liveData = await liveResponse.json();
-        const liveMatches = liveData.response || [];
-        if (liveMatches.length > 0) {
-          console.log(`Found ${liveMatches.length} active live World Cup matches! Merging...`);
-          for (const lm of liveMatches) {
-            const index = fixtures.findIndex(f => f.fixture.id === lm.fixture.id);
-            if (index !== -1) {
-              fixtures[index] = lm;
-            } else {
-              fixtures.push(lm);
+      if (response.ok) {
+        const apiData = await response.json();
+        if (apiData.response && apiData.response.length > 0) {
+          fixtures = apiData.response;
+          console.log(`Successfully fetched ${fixtures.length} matches for World Cup 2026!`);
+        } else {
+          console.log('No matches returned for World Cup 2026, or plan subscription restriction. Throwing to fallback...');
+          throw new Error('Empty 2026 response');
+        }
+      } else {
+        throw new Error(`2026 fetch responded with status code: ${response.status}`);
+      }
+
+      // Attempt to merge any actual live World Cup fixtures if they are playing right now
+      try {
+        console.log('Checking for active live World Cup fixtures (live=all)...');
+        const liveResponse = await fetch('https://api-football-v1.p.rapidapi.com/v3/fixtures?league=1&live=all', {
+          headers: {
+            'x-rapidapi-key': key,
+            'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
+          }
+        });
+        if (liveResponse.ok) {
+          const liveData = await liveResponse.json();
+          const liveMatches = liveData.response || [];
+          if (liveMatches.length > 0) {
+            console.log(`Found ${liveMatches.length} active live World Cup matches! Merging...`);
+            for (const lm of liveMatches) {
+              const index = fixtures.findIndex(f => f.fixture.id === lm.fixture.id);
+              if (index !== -1) {
+                fixtures[index] = lm;
+              } else {
+                fixtures.push(lm);
+              }
             }
           }
         }
-      }
-    } catch (liveErr: any) {
-      console.warn('Could not check for active live World Cup matches:', liveErr.message);
-    }
-
-    const { data: teams, error: teamsErr } = await supabaseAdmin.from('teams').select('*');
-    if (teamsErr) throw teamsErr;
-
-    const teamMap = new Map(teams.map((t: any) => [t.code, t.id]));
-
-    // Securely wipe any mismatching matches (like left over 2022 fallback, or procedural fakes)
-    console.log('Wiping out matches database for complete synchrony with the official API feed...');
-    await supabaseAdmin.from('predictions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await supabaseAdmin.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-
-    for (const item of fixtures) {
-      const apiHomeName = item.teams.home.name.toLowerCase();
-      const apiAwayName = item.teams.away.name.toLowerCase();
-
-      const homeCode = nameToCode[apiHomeName];
-      const awayCode = nameToCode[apiAwayName];
-
-      const homeId = teamMap.get(homeCode || '');
-      const awayId = teamMap.get(awayCode || '');
-
-      if (!homeId || !awayId) {
-        // Skip match if teams are not in our World Cup DB
-        continue;
+      } catch (liveErr: any) {
+        console.warn('Could not check for active live World Cup matches:', liveErr.message);
       }
 
-      const matchData = {
-        home_team_id: homeId,
-        away_team_id: awayId,
-        start_at: item.fixture.date,
-        phase: getPhaseFromRound(item.league.round),
-        home_score: item.goals.home,
-        away_score: item.goals.away,
-        status: getStatusFromShort(item.fixture.status.short),
-        group_name: cleanGroupName(getGroupNameFromRound(item.league.round))
-      };
+      const { data: teams, error: teamsErr } = await supabaseAdmin.from('teams').select('*');
+      if (teamsErr) throw teamsErr;
 
-      const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
-      if (inserted) results.push({ id: inserted[0].id, status: 'inserted' });
+      const teamMap = new Map(teams.map((t: any) => [t.code, t.id]));
+
+      // Securely wipe any mismatching matches (like left over 2022 fallback, or procedural fakes)
+      console.log('Wiping out matches database for complete synchrony with the official API feed...');
+      await supabaseAdmin.from('predictions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabaseAdmin.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      const insertedKeys = new Set<string>();
+      for (const item of fixtures) {
+        const apiHomeName = item.teams.home.name.toLowerCase();
+        const apiAwayName = item.teams.away.name.toLowerCase();
+
+        const homeCode = nameToCode[apiHomeName];
+        const awayCode = nameToCode[apiAwayName];
+
+        const homeId = teamMap.get(homeCode || '');
+        const awayId = teamMap.get(awayCode || '');
+
+        if (!homeId || !awayId) {
+          // Skip match if teams are not in our World Cup DB
+          continue;
+        }
+
+        const mTime = item.fixture.date ? new Date(item.fixture.date).toISOString().split('.')[0] + 'Z' : '';
+        const keyStr = `${homeId}_${awayId}_${mTime}`;
+        if (insertedKeys.has(keyStr)) {
+          console.log(`[SYNC] skipping duplicate fixture: ${apiHomeName} vs ${apiAwayName} at ${mTime}`);
+          continue;
+        }
+        insertedKeys.add(keyStr);
+
+        const matchData = {
+          home_team_id: homeId,
+          away_team_id: awayId,
+          start_at: item.fixture.date,
+          phase: getPhaseFromRound(item.league.round),
+          home_score: item.goals.home,
+          away_score: item.goals.away,
+          status: getStatusFromShort(item.fixture.status.short),
+          group_name: cleanGroupName(getGroupNameFromRound(item.league.round))
+        };
+
+        const { data: inserted } = await supabaseAdmin.from('matches').insert([matchData]).select();
+        if (inserted) results.push({ id: inserted[0].id, status: 'inserted' });
+      }
+
+      const updatedRounds = await buildAndSaveBracket(supabaseAdmin);
+
+      const { data: finalMatches } = await supabaseAdmin
+        .from('matches')
+        .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+        .order('start_at', { ascending: true });
+
+      res.json({ 
+        success: true, 
+        source: sourceUsed, 
+        count: results.length, 
+        details: results,
+        matches: finalMatches || [],
+        bracket: updatedRounds
+      });
+    } catch (error: any) {
+      console.error('API-Football (RapidAPI) sync failed:', error.message);
+      
+      let errorMsg = error.message || 'Error desconocido';
+      if (errorMsg.includes('subscribed') || errorMsg.includes('403') || errorMsg.includes('not active')) {
+        errorMsg = 'No estás suscrito al servicio "API-Football" en RapidAPI. Por favor, asegúrate de haber activado el plan (incluso el gratuito) para este endpoint con tu clave API en: https://rapidapi.com/api-sports/api/api-football';
+      } else if (errorMsg.includes('Subscription') || errorMsg.includes('unsubscribed')) {
+        errorMsg = 'Debes suscribirte al feed de API-Football en RapidAPI para poder descargar partidos reales.';
+      }
+
+      res.status(403).json({ 
+        success: false, 
+        error: errorMsg,
+        details: 'El modo de datos simulados (mock fallback) se ha desactivado a petición del usuario. Configura tu credencial RAPIDAPI_FOOTBALL_KEY para obtener datos reales.',
+        wasFallback: false
+      });
     }
-
-    const updatedRounds = await buildAndSaveBracket(supabaseAdmin);
-
-    const { data: finalMatches } = await supabaseAdmin
-      .from('matches')
-      .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
-      .order('start_at', { ascending: true });
-
-    res.json({ 
-      success: true, 
-      source: sourceUsed, 
-      count: results.length, 
-      details: results,
-      matches: finalMatches || [],
-      bracket: updatedRounds
-    });
-  } catch (error: any) {
-    console.error('API-Football (RapidAPI) sync failed:', error.message);
-    
-    let errorMsg = error.message || 'Error desconocido';
-    if (errorMsg.includes('subscribed') || errorMsg.includes('403') || errorMsg.includes('not active')) {
-      errorMsg = 'No estás suscrito al servicio "API-Football" en RapidAPI. Por favor, asegúrate de haber activado el plan (incluso el gratuito) para este endpoint con tu clave API en: https://rapidapi.com/api-sports/api/api-football';
-    } else if (errorMsg.includes('Subscription') || errorMsg.includes('unsubscribed')) {
-      errorMsg = 'Debes suscribirte al feed de API-Football en RapidAPI para poder descargar partidos reales.';
-    }
-
-    res.status(403).json({ 
-      success: false, 
-      error: errorMsg,
-      details: 'El modo de datos simulados (mock fallback) se ha desactivado a petición del usuario. Configura tu credencial RAPIDAPI_FOOTBALL_KEY para obtener datos reales.',
-      wasFallback: false
-    });
+  } finally {
+    isSynchronizingGlobal = false;
   }
 });
 

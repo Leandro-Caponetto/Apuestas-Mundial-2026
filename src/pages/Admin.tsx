@@ -43,7 +43,20 @@ export default function Admin() {
   async function fetchData() {
     const { data: matchesData } = await supabase.from('matches').select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)').order('start_at');
     const { data: teamsData } = await supabase.from('teams').select('*');
-    setMatches(matchesData || []);
+    
+    // Filter duplicates: keeping unique by home_team_id + away_team_id + normalized start_at date
+    const uniqueMatches: any[] = [];
+    const seen = new Set<string>();
+    (matchesData || []).forEach((m: any) => {
+      const normDate = m.start_at ? new Date(m.start_at).toISOString().split('.')[0] + 'Z' : '';
+      const key = `${m.home_team_id}_${m.away_team_id}_${normDate}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueMatches.push(m);
+      }
+    });
+
+    setMatches(uniqueMatches);
     setTeams(teamsData || []);
     setLoading(false);
   }

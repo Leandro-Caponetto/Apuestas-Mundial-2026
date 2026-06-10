@@ -51,7 +51,23 @@ export const dbService = {
       return dateA - dateB;
     });
 
-    return sortedMatches.map(m => ({
+    const uniqueMatches: any[] = [];
+    const seen = new Set<string>();
+    sortedMatches.forEach(m => {
+      const matchPhase = m.phase || 'group';
+      // Ignore invalid group stage matches with null teams
+      if (matchPhase === 'group' && (!m.home_team_id || !m.away_team_id)) {
+        return;
+      }
+      const normDate = m.start_at ? new Date(m.start_at).toISOString().split('.')[0] + 'Z' : '';
+      const key = `${m.home_team_id}_${m.away_team_id}_${normDate}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueMatches.push(m);
+      }
+    });
+
+    return uniqueMatches.map(m => ({
       id: m.id,
       home_team_id: m.home_team_id,
       away_team_id: m.away_team_id,
@@ -450,21 +466,30 @@ export const dbService = {
       if (insertedTeams) {
         const teamMap = new Map(insertedTeams.map(t => [t.code, t.id]));
         
+        // Fetch all existing matches at once for O(1) in-memory lookup rather than 120 selects-in-a-loop
+        const { data: dbMatches } = await supabase
+          .from('matches')
+          .select('id, home_team_id, away_team_id, start_at');
+        
+        const existingMap = new Map<string, string>();
+        if (dbMatches) {
+          dbMatches.forEach(dbM => {
+            const mTime = new Date(dbM.start_at).getTime();
+            const key = `${dbM.home_team_id}_${dbM.away_team_id}_${mTime}`;
+            existingMap.set(key, dbM.id);
+          });
+        }
+
         const matchesToInsert = [];
         for (const m of matches) {
-          const homeId = teamMap.get(m.homeTeam?.code || '');
-          const awayId = teamMap.get(m.awayTeam?.code || '');
+          const homeId = teamMap.get(m.homeTeam?.code || m.home_team?.code || '');
+          const awayId = teamMap.get(m.awayTeam?.code || m.away_team?.code || '');
           
           if (!homeId || !awayId) continue;
 
-          // Check if match already exists by teams and start date
-          const { data: existing } = await supabase
-            .from('matches')
-            .select('id')
-            .eq('home_team_id', homeId)
-            .eq('away_team_id', awayId)
-            .eq('start_at', m.start_at || '')
-            .maybeSingle();
+          const mTime = new Date(m.start_at).getTime();
+          const key = `${homeId}_${awayId}_${mTime}`;
+          const existingId = existingMap.get(key);
 
           const matchData = {
             home_team_id: homeId,
@@ -477,8 +502,8 @@ export const dbService = {
             group_name: m.group_name
           };
 
-          if (existing) {
-            await supabase.from('matches').update(matchData).eq('id', existing.id);
+          if (existingId) {
+            await supabase.from('matches').update(matchData).eq('id', existingId);
           } else {
             matchesToInsert.push(matchData);
           }

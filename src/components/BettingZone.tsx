@@ -36,6 +36,36 @@ const cleanGroupName = (group: string | null | undefined): string => {
   return group.replace(/^(grupo\s+|group\s+|grupo|group|group_)/i, '').trim().toUpperCase();
 };
 
+const deduplicateMatchesList = (list: Match[]): Match[] => {
+  const uniqueMatches: Match[] = [];
+  const seen = new Set<string>();
+  
+  const sorted = [...(list || [])].sort((a, b) => {
+    const dateA = a.start_at ? new Date(a.start_at).getTime() : 0;
+    const dateB = b.start_at ? new Date(b.start_at).getTime() : 0;
+    return dateA - dateB;
+  });
+
+  sorted.forEach(m => {
+    const matchPhase = m.phase || 'group';
+    if (matchPhase === 'group' && (!m.home_team_id || !m.away_team_id)) {
+      return;
+    }
+    if (!m.home_team_id || !m.away_team_id) {
+      uniqueMatches.push(m);
+      return;
+    }
+    const normDate = m.start_at ? new Date(m.start_at).toISOString().split('.')[0] + 'Z' : '';
+    const key = `${m.home_team_id}_${m.away_team_id}_${normDate}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueMatches.push(m);
+    }
+  });
+
+  return uniqueMatches;
+};
+
 export const BettingZone: React.FC = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -129,7 +159,7 @@ export const BettingZone: React.FC = () => {
         // Load and subscribe to matches
         const unsubMatches = dbService.subscribeMatches((data) => {
           if (isMounted) {
-            setMatches(data);
+            setMatches(deduplicateMatchesList(data));
             setLoading(false);
           }
         });
@@ -166,7 +196,7 @@ export const BettingZone: React.FC = () => {
       toast.success('¡Base de datos del Mundial inicializada correctamente (PAN registrado, CHI removido)! ⚽', { id: toastId });
       // Reload matches list
       const updatedMatches = await dbService.getMatches();
-      setMatches(updatedMatches);
+      setMatches(deduplicateMatchesList(updatedMatches));
     } catch (err: any) {
       toast.error('Error al re-sembrar base de datos: ' + (err.message || 'Intente de nuevo'), { id: toastId });
       console.error(err);
@@ -193,7 +223,7 @@ export const BettingZone: React.FC = () => {
         toast.success('¡Partido resuelto exitosamente! Puntos acreditados a todos en tiempo real.', { id: toastId });
         // Reload matches list
         const updatedMatches = await dbService.getMatches();
-        setMatches(updatedMatches);
+        setMatches(deduplicateMatchesList(updatedMatches));
       } else {
         throw new Error(data.error);
       }
@@ -225,7 +255,7 @@ export const BettingZone: React.FC = () => {
           toast.success(`¡Sincronización exitosa! ${data.count} partidos cargados y actualizados en tiempo real mediante RapidAPI.`, { id: toastId, duration: 4000 });
         }
         const mData = await dbService.getMatches();
-        setMatches(mData);
+        setMatches(deduplicateMatchesList(mData));
       } else {
         toast.error('Error: ' + (data.error || 'Fallo de sincronización'), { id: toastId, duration: 5000 });
       }
