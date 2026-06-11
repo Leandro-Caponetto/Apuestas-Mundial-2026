@@ -15,6 +15,7 @@ import Auth from '@/pages/Auth';
 import Profile from '@/pages/Profile';
 import Leagues from '@/pages/Leagues';
 import Admin from '@/pages/Admin';
+import Chat from '@/pages/Chat';
 import { BettingZone } from '@/components/BettingZone';
 
 export default function App() {
@@ -106,6 +107,7 @@ export default function App() {
             <Route path="/leagues" element={session ? <Leagues /> : <Navigate to="/auth" />} />
             <Route path="/admin" element={session ? <Admin /> : <Navigate to="/auth" />} />
             <Route path="/betting" element={session ? <BettingZone /> : <Navigate to="/auth" />} />
+            <Route path="/chat" element={session ? <Chat /> : <Navigate to="/auth" />} />
             <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/" />} />
           </Routes>
         </main>

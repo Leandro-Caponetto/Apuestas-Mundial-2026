@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { Trophy, Home, User as UserIcon, Settings, LogOut, LayoutDashboard, ListOrdered, CheckSquare } from 'lucide-react';
+import { Trophy, Home, User as UserIcon, Settings, LogOut, LayoutDashboard, ListOrdered, CheckSquare, MessageCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Profile } from '@/types';
 import { dbService } from '@/services/dbService';
@@ -54,6 +54,7 @@ export function Navbar() {
   const navItems = [
     { name: 'Inicio', href: '/', icon: Home },
     { name: 'PRODE', href: '/betting', icon: CheckSquare },
+    { name: 'Chat', href: '/chat', icon: MessageCircle },
     { name: 'Ranking', href: '/leaderboard', icon: ListOrdered },
     { name: 'Liga', href: '/leagues', icon: Trophy },
     ...(user?.email === 'caponettopeppers@gmail.com' ? [{ name: 'Admin', href: '/admin', icon: Settings }] : []),

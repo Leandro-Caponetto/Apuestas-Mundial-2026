@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import { WORLD_CUP_TEAMS } from './src/lib/constants';
 import { MOCK_MATCHES, getInitialBracket } from './src/lib/mockData';
+import { chatServer } from './chatServer';
 
 dotenv.config();
 
@@ -1107,7 +1108,7 @@ async function startServer() {
     cleanRetiredTeams(supabaseAdmin).catch(e => console.error('[CLEANUP] Error on startup clean:', e));
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const serverInstance = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
     console.log('--- STARTUP ENVIRONMENT DIAGNOSTICS ---');
     console.log('VITE_SUPABASE_URL is configured:', !!process.env.VITE_SUPABASE_URL);
@@ -1116,6 +1117,9 @@ async function startServer() {
     console.log('Keys in process.env containing VITE, KEY or URL:', Object.keys(process.env).filter(k => k.includes('VITE_') || k.includes('KEY') || k.includes('URL') || k.includes('SUPABASE')));
     console.log('----------------------------------------');
   });
+
+  // Attach real-time WS chat server
+  chatServer.initialize(serverInstance);
 }
 
 startServer().catch(err => {
