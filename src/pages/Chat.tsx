@@ -7,7 +7,7 @@ import {
   MessageSquare, Send, Mic, Paperclip, Smile, Search, 
   MoreVertical, Check, CheckCheck, Trash2, CornerUpLeft, 
   Users, Trophy, Target, ShieldQuestion, HelpCircle, 
-  ArrowLeft, CircleDot, Phone, Video, RefreshCw
+  ArrowLeft, CircleDot, Phone, Video, RefreshCw, Play, Pause
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -38,6 +38,11 @@ export default function Chat() {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showChannelListMobile, setShowChannelListMobile] = useState(true);
+
+  // Voice note and player simulator states
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [playingAudioIds, setPlayingAudioIds] = useState<Record<string, boolean>>({});
 
   // References for scrolling and typing timeouts
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -193,6 +198,68 @@ export default function Chat() {
     setIsConnected(false);
   };
 
+  // Voice note timer effect
+  useEffect(() => {
+    let interval: any;
+    if (isRecording) {
+      setRecordingSeconds(0);
+      interval = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording]);
+
+  const formatRecordingTime = (totalSeconds: number) => {
+    const min = Math.floor(totalSeconds / 60);
+    const sec = totalSeconds % 60;
+    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+  };
+
+  const handleSendVoiceNote = () => {
+    if (!isConnected || !socketRef.current || recordingSeconds < 1) {
+      setIsRecording(false);
+      return;
+    }
+    const durationStr = formatRecordingTime(recordingSeconds);
+    const voiceText = `🎙️ Nota de voz (${durationStr})`;
+
+    const payload = {
+      type: 'message',
+      payload: {
+        text: voiceText,
+        repliedTo: replyingTo ? {
+          id: replyingTo.id,
+          userName: replyingTo.userName,
+          text: replyingTo.text,
+        } : null
+      }
+    };
+
+    socketRef.current.send(JSON.stringify(payload));
+    setIsRecording(false);
+    setReplyingTo(null);
+
+    // Cancel typing
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (lastTypingSentRef.current) {
+      socketRef.current.send(JSON.stringify({
+        type: 'typing',
+        payload: { typing: false }
+      }));
+      lastTypingSentRef.current = false;
+    }
+  };
+
+  const togglePlayAudio = (id: string) => {
+    setPlayingAudioIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -321,6 +388,16 @@ export default function Chat() {
     return colors[sum % colors.length];
   };
 
+  const getChannelColorClass = (id: string) => {
+    switch (id) {
+      case 'general': return 'bg-gradient-to-tr from-[#128c7e] to-[#25d366] text-zinc-950 shadow-md';
+      case 'bets': return 'bg-gradient-to-tr from-amber-600 to-yellow-400 text-zinc-950 shadow-md';
+      case 'scores': return 'bg-gradient-to-tr from-sky-600 to-emerald-400 text-zinc-950 shadow-md';
+      case 'support': return 'bg-gradient-to-tr from-rose-600 to-orange-400 text-zinc-950 shadow-md';
+      default: return 'bg-[#202c33] text-white';
+    }
+  };
+
   // Filter messages by search queries
   const filteredMessages = messages.filter((m) =>
     m.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -328,7 +405,7 @@ export default function Chat() {
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-[750px] max-w-6xl mx-auto rounded-3xl overflow-hidden border border-zinc-800 shadow-[0_15px_45px_rgba(0,0,0,0.8)] bg-[#0b141a]">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-120px)] min-h-[500px] md:h-[750px] w-full max-w-6xl mx-auto rounded-2xl md:rounded-3xl overflow-hidden border border-zinc-805 bg-[#0b141a] shadow-[0_15px_45px_rgba(0,0,0,0.8)]">
       
       {/* 1. Left Sidebar: Channels & Status */}
       <div className={`w-full md:w-[360px] flex-shrink-0 flex flex-col border-r border-zinc-800/80 bg-[#111b21] transition-all duration-300 ${
@@ -402,16 +479,12 @@ export default function Chat() {
                   setActiveChannel(ch.id);
                   setShowChannelListMobile(false);
                 }}
-                className={`w-full text-left p-4 flex items-start gap-4 transition-all hover:bg-[#202c33]/40 ${
+                className={`w-full text-left p-3.5 flex items-start gap-3.5 transition-all hover:bg-[#202c33]/40 ${
                   isSelected ? 'bg-[#2a3942]' : ''
                 }`}
               >
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 border transition-all ${
-                  isSelected 
-                    ? 'bg-orange-500 text-black border-orange-400' 
-                    : 'bg-zinc-850 text-zinc-400 border-zinc-800 hover:text-white hover:border-zinc-700'
-                }`}>
-                  <ch.icon size={20} strokeWidth={2.5} />
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 border border-zinc-900/40 transition-all ${getChannelColorClass(ch.id)}`}>
+                  <ch.icon size={22} className="text-zinc-950 font-black shrink-0" strokeWidth={2.5} />
                 </div>
                 
                 <div className="flex-1 min-w-0">
@@ -467,8 +540,8 @@ export default function Chat() {
               const activeChObj = CHANNELS.find((ch) => ch.id === activeChannel);
               const ActiveIcon = activeChObj?.icon || MessageSquare;
               return (
-                <div className="w-10 h-10 rounded-full bg-orange-500/10 text-orange-500 flex items-center justify-center border border-orange-500/20 shrink-0">
-                  <ActiveIcon size={18} strokeWidth={2.5} />
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center border border-zinc-900/40 shrink-0 ${getChannelColorClass(activeChannel)}`}>
+                  <ActiveIcon size={18} className="text-zinc-950 font-black" strokeWidth={2.5} />
                 </div>
               );
             })()}
@@ -508,6 +581,20 @@ export default function Chat() {
 
         {/* Message Stream Window */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 z-10">
+          
+          {/* WhatsApp style yellow/gold Security Info pill at top of scroll */}
+          <div className="flex justify-center mb-3">
+            <div className="bg-[#182229] border border-zinc-800/40 text-[#ffd279] text-[11px] font-medium px-4 py-2 rounded-xl text-center max-w-sm shadow-sm flex items-start gap-2 w-fit leading-relaxed select-none">
+              <span className="text-xs shrink-0 select-none">🔒</span>
+              <span className="text-left font-bold text-zinc-300">Los mensajes de este canal están respaldados por el servidor de apuestas del PRODE. Nadie fuera de este chat puede verlos.</span>
+            </div>
+          </div>
+
+          <div className="flex justify-center mb-1">
+            <span className="bg-[#182229] text-zinc-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg shadow-sm border border-zinc-805/40">
+              HOY
+            </span>
+          </div>
           
           {/* Welcome Message Cards */}
           {messages.length === 0 && (
@@ -549,7 +636,7 @@ export default function Chat() {
                   {!isMe && isConsecutive && <div className="w-8 shrink-0" />}
 
                   {/* Bubble Container */}
-                  <div className="max-w-[80%] md:max-w-[70%] relative flex flex-col group">
+                  <div className="max-w-[85%] md:max-w-[70%] relative flex flex-col group">
                     
                     {/* Quotation / Reply Box Indicator inside original Bubble */}
                     {msg.repliedTo && (
@@ -580,9 +667,48 @@ export default function Chat() {
                       )}
 
                       {/* Main Message Text */}
-                      <p className="text-xs md:text-sm font-medium leading-relaxed break-words pr-8">
-                        {msg.text}
-                      </p>
+                      {msg.text.startsWith('🎙️ Nota de voz (') ? (
+                        <div className="flex items-center gap-3.5 py-1 min-w-[210px] select-none">
+                          <button
+                            type="button"
+                            onClick={() => togglePlayAudio(msg.id)}
+                            className="w-10 h-10 rounded-full bg-[#128c7e]/30 text-emerald-450 flex items-center justify-center shrink-0 hover:bg-[#128c7e]/50 active:scale-95 transition-all"
+                          >
+                            {playingAudioIds[msg.id] ? (
+                              <Pause size={16} className="fill-emerald-400 text-emerald-400" />
+                            ) : (
+                              <Play size={16} className="fill-emerald-400 text-emerald-400 ml-0.5" />
+                            )}
+                          </button>
+                          
+                          <div className="flex-1 flex items-end gap-[2px] h-6 pb-0.5">
+                            {[4, 7, 5, 8, 3, 6, 4, 8, 5, 9, 3, 6, 7, 4, 8, 5, 7, 6, 4, 3].map((h, bIdx) => (
+                              <span
+                                key={bIdx}
+                                className={`w-[2px] rounded-full transition-all duration-300 ${
+                                  playingAudioIds[msg.id] 
+                                    ? 'bg-emerald-400 animate-pulse' 
+                                    : 'bg-zinc-500'
+                                }`}
+                                style={{ 
+                                  height: `${playingAudioIds[msg.id] ? (Math.sin(bIdx * 1.5) * 4 + 14) : h * 2.2}px`
+                                }}
+                              />
+                            ))}
+                          </div>
+                          
+                          <div className="flex flex-col items-end gap-0.5 shrink-0 pl-1">
+                            <span className="text-[10px] text-zinc-400 font-bold font-mono">
+                              {msg.text.match(/\(([^)]+)\)/)?.[1] || '0:05'}
+                            </span>
+                            <span className="text-[10px] text-emerald-450 font-black">🎙️</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs md:text-sm font-medium leading-relaxed break-words pr-8">
+                          {msg.text}
+                        </p>
+                      )}
 
                       {/* Message Footer holding absolute Time metadata & Checkmarks */}
                       <div className="flex items-center justify-end gap-1 mt-1 text-[9px] font-bold text-zinc-400 italic">
@@ -703,52 +829,89 @@ export default function Chat() {
             ))}
           </div>
 
-          <form onSubmit={handleSendMessage} className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-zinc-400 px-1">
-              <button 
-                type="button" 
-                onClick={() => setInputText((prev) => prev + '⚽')} 
-                className="p-1.5 hover:bg-white/5 rounded-full hover:text-white transition-all"
-              >
-                <Smile size={20} />
-              </button>
-              <button 
-                type="button" 
-                className="p-1.5 hover:bg-white/5 rounded-full hover:text-white transition-all"
-              >
-                <Paperclip size={20} />
-              </button>
-            </div>
+          {isRecording ? (
+            <div className="flex items-center justify-between gap-3 bg-[#111b21] p-2 rounded-2xl border border-red-500/20 animate-pulse">
+              <div className="flex items-center gap-2.5 px-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping shrink-0" />
+                <span className="text-xs text-red-400 font-extrabold uppercase tracking-widest">
+                  Grabando Audio...
+                </span>
+                <span className="text-xs text-white font-black font-mono pl-1 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
+                  {formatRecordingTime(recordingSeconds)}
+                </span>
+              </div>
 
-            {/* Input fields with state indicators */}
-            <div className="flex-1 bg-[#2a3942] rounded-xl flex items-center px-4 py-2 text-sm border border-zinc-800/20">
-              <input
-                type="text"
-                placeholder="Escribe un mensaje..."
-                value={inputText}
-                onChange={handleInputChange}
-                className="bg-transparent border-none outline-none text-white placeholder-zinc-500 w-full font-semibold focus:ring-0 text-xs sm:text-sm"
-              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRecording(false)}
+                  className="p-2.5 bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 rounded-full transition-colors flex items-center justify-center"
+                  title="Descartar nota de voz"
+                >
+                  <Trash2 size={16} />
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={handleSendVoiceNote}
+                  className="w-10 h-10 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center text-zinc-950 font-black transition-transform active:scale-95 shadow-md"
+                  title="Enviar nota de voz"
+                >
+                  <Check size={20} strokeWidth={3} />
+                </button>
+              </div>
             </div>
+          ) : (
+            <form onSubmit={handleSendMessage} className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-zinc-400 px-1">
+                <button 
+                  type="button" 
+                  onClick={() => setInputText((prev) => prev + '⚽')} 
+                  className="p-1.5 hover:bg-white/5 rounded-full hover:text-white transition-all"
+                >
+                  <Smile size={20} />
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setInputText((prev) => prev + '🔥 POR EL MUNDIAL! 🏆')} 
+                  className="p-1.5 hover:bg-white/5 rounded-full hover:text-white transition-all"
+                  title="Insertar frase de aliento"
+                >
+                  <Paperclip size={20} />
+                </button>
+              </div>
 
-            {/* Mic voice vs Send plane action toggles */}
-            {inputText.trim() === '' ? (
-              <button
-                type="button"
-                onClick={() => setInputText('¡Vamos con todo por el Mundial! ⚽🏆')}
-                className="w-11 h-11 rounded-full bg-[#202c33] flex items-center justify-center text-zinc-450 hover:text-white transition-transform active:scale-95"
-              >
-                <Mic size={18} />
-              </button>
-            ) : (
-              <button
-                type="submit"
-                className="w-11 h-11 rounded-full bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center text-black font-bold transition-transform active:scale-95 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
-              >
-                <Send size={18} strokeWidth={2.5} className="ml-0.5" />
-              </button>
-            )}
-          </form>
+              {/* Input fields with state indicators */}
+              <div className="flex-1 bg-[#2a3942] rounded-xl flex items-center px-4 py-2 text-sm border border-zinc-800/20">
+                <input
+                  type="text"
+                  placeholder="Escribe un mensaje..."
+                  value={inputText}
+                  onChange={handleInputChange}
+                  className="bg-transparent border-none outline-none text-white placeholder-zinc-500 w-full font-semibold focus:ring-0 text-xs sm:text-sm"
+                />
+              </div>
+
+              {/* Mic voice vs Send plane action toggles */}
+              {inputText.trim() === '' ? (
+                <button
+                  type="button"
+                  onClick={() => setIsRecording(true)}
+                  className="w-11 h-11 rounded-full bg-[#202c33] hover:bg-[#2a3942] flex items-center justify-center text-emerald-400 hover:text-emerald-550 transition-all active:scale-95 shrink-0"
+                  title="Grabar nota de voz"
+                >
+                  <Mic size={18} />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="w-11 h-11 rounded-full bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center text-black font-bold transition-transform active:scale-95 shadow-[0_0_15px_rgba(16,185,129,0.3)] shrink-0"
+                >
+                  <Send size={18} strokeWidth={2.5} className="ml-0.5" />
+                </button>
+              )}
+            </form>
+          )}
         </div>
 
       </div>
