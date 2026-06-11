@@ -15,10 +15,11 @@ import { supabase } from '@/lib/supabase';
 import { dbService } from '@/services/dbService';
 import { toast } from 'react-hot-toast';
 
+import logo from '../../public/assets/logo.svg'
+
 type Tab = 'partidos' | 'grupos' | 'bracket' | 'ranking';
 
 // Logo oficial con la copa (26 con el trofeo)
-const logo = 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Logo_de_la_Copa_Mundial_de_F%C3%BAtbol_2026.svg';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('grupos');
@@ -127,6 +128,10 @@ export default function Home() {
           const unique: any[] = [];
           const seen = new Set<string>();
           parsed.forEach((m: any) => {
+            const matchPhase = m.phase || 'group';
+            if (matchPhase === 'group' && (!m.home_team_id || !m.away_team_id)) {
+              return;
+            }
             const normDate = m.start_at ? new Date(m.start_at).toISOString().split('.')[0] + 'Z' : '';
             const key = `${m.home_team_id}_${m.away_team_id}_${normDate}`;
             if (!seen.has(key)) {
@@ -158,6 +163,10 @@ export default function Home() {
         const unique: any[] = [];
         const seen = new Set<string>();
         newMatches.forEach((m: any) => {
+          const matchPhase = m.phase || 'group';
+          if (matchPhase === 'group' && (!m.home_team_id || !m.away_team_id)) {
+            return;
+          }
           const normDate = m.start_at ? new Date(m.start_at).toISOString().split('.')[0] + 'Z' : '';
           const key = `${m.home_team_id}_${m.away_team_id}_${normDate}`;
           if (!seen.has(key)) {
@@ -726,35 +735,52 @@ export default function Home() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {[
-                    { id: 'opening-1', home: 'MEX', away: 'A2', location: 'Estadio Azteca, CDMX', date: '11 JUN', stadium: 'Apertura A' },
-                    { id: 'opening-2', home: 'CAN', away: 'B2', location: 'Toronto Stadium', date: '12 JUN', stadium: 'Apertura B' },
-                    { id: 'opening-3', home: 'USA', away: 'D2', location: 'SoFi Stadium, LA', date: '12 JUN', stadium: 'Apertura C' },
-                  ].map((match) => (
-                    <div key={match.id} className="sport-card p-6 border-orange-500/10 group hover:border-orange-500/30 transition-all">
-                      <div className="flex justify-between items-start mb-6">
-                        <span className="px-2 py-0.5 bg-orange-500 text-black text-[9px] font-black uppercase italic rounded">{match.stadium}</span>
-                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest italic">{match.date}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-4 mb-6">
-                        <div className="text-center flex-1">
-                          <div className="w-12 h-12 bg-white/5 rounded-full mx-auto mb-2 flex items-center justify-center border border-white/10 group-hover:border-orange-500/50 transition-colors">
-                             <span className="text-lg font-black text-white italic">{match.home}</span>
-                          </div>
-                          <p className="text-xs font-black text-white italic">ANFITRIÓN</p>
+                    { id: 'opening-1', homeCode: 'MEX', awayCode: 'RSA', location: 'Estadio Azteca, CDMX', date: '11 JUN', stadium: 'Apertura A' },
+                    { id: 'opening-2', homeCode: 'CAN', awayCode: 'BIH', location: 'Toronto Stadium', date: '11 JUN', stadium: 'Apertura B' },
+                    { id: 'opening-3', homeCode: 'USA', awayCode: 'PAR', location: 'SoFi Stadium, LA', date: '11 JUN', stadium: 'Apertura C' },
+                  ].map((mConfig) => {
+                    const homeTeam = WORLD_CUP_TEAMS.find(t => t.code === mConfig.homeCode);
+                    const awayTeam = WORLD_CUP_TEAMS.find(t => t.code === mConfig.awayCode);
+                    
+                    return (
+                      <div key={mConfig.id} className="sport-card p-6 border-orange-500/10 group hover:border-orange-500/30 transition-all">
+                        <div className="flex justify-between items-start mb-6">
+                          <span className="px-2 py-0.5 bg-orange-500 text-black text-[9px] font-black uppercase italic rounded">{mConfig.stadium}</span>
+                          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest italic">{mConfig.date}</span>
                         </div>
-                        <div className="text-zinc-700 font-black italic text-xl">VS</div>
-                        <div className="text-center flex-1">
-                          <div className="w-12 h-12 bg-white/5 rounded-full mx-auto mb-2 flex items-center justify-center border border-white/10 border-dashed">
-                             <span className="text-lg font-black text-zinc-600 italic">?</span>
+                        <div className="flex items-center justify-between gap-4 mb-6">
+                          <div className="text-center flex-1">
+                            <div className="w-16 h-11 bg-zinc-800 rounded-lg overflow-hidden border border-zinc-750 shadow-xl mx-auto mb-2 flex items-center justify-center group-hover:border-orange-500/30 transition-colors">
+                              {homeTeam?.flag_url ? (
+                                <img src={homeTeam.flag_url} alt={homeTeam.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                <span className="text-sm font-black text-white italic">{mConfig.homeCode}</span>
+                              )}
+                            </div>
+                            <p className="text-xs font-black text-white italic tracking-tight line-clamp-1">{homeTeam?.name || 'ANFITRIÓN'}</p>
+                            <p className="text-[9px] font-bold text-orange-500/80 uppercase tracking-wider mt-0.5">Anfitrión</p>
                           </div>
-                          <p className="text-xs font-black text-zinc-600 italic">POR DEFINIR</p>
+                          
+                          <div className="text-zinc-700 font-black italic text-xl self-center px-1">VS</div>
+                          
+                          <div className="text-center flex-1">
+                            <div className="w-16 h-11 bg-zinc-800 rounded-lg overflow-hidden border border-zinc-750 shadow-xl mx-auto mb-2 flex items-center justify-center group-hover:border-orange-500/30 transition-colors">
+                              {awayTeam?.flag_url ? (
+                                <img src={awayTeam.flag_url} alt={awayTeam.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                <span className="text-sm font-black text-zinc-400 italic">{mConfig.awayCode}</span>
+                              )}
+                            </div>
+                            <p className="text-xs font-black text-white italic tracking-tight line-clamp-1">{awayTeam?.name || 'POR DEFINIR'}</p>
+                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider mt-0.5">Rival</p>
+                          </div>
+                        </div>
+                        <div className="pt-4 border-t border-white/5 flex items-center gap-2 text-[9px] font-bold text-zinc-500 uppercase italic">
+                          <Info size={10} className="text-orange-500 flex-shrink-0" /> <span className="truncate">{mConfig.location}</span>
                         </div>
                       </div>
-                      <div className="pt-4 border-t border-white/5 flex items-center gap-2 text-[9px] font-bold text-zinc-500 uppercase italic">
-                        <Info size={10} className="text-orange-500" /> {match.location}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
