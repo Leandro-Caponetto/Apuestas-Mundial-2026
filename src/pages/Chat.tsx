@@ -29,6 +29,9 @@ export default function Chat() {
   const [inputText, setInputText] = useState('');
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [allRegisteredProfiles, setAllRegisteredProfiles] = useState<ProfileType[]>([]);
+  const [globalOnlineIds, setGlobalOnlineIds] = useState<string[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   
   // States of WebSocket connection
   const [isConnected, setIsConnected] = useState(false);
@@ -38,6 +41,7 @@ export default function Chat() {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showChannelListMobile, setShowChannelListMobile] = useState(true);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
 
   // Voice note and player simulator states
   const [isRecording, setIsRecording] = useState(false);
@@ -59,6 +63,13 @@ export default function Chat() {
           setProfile(p);
         });
       }
+    });
+
+    // 2. Load all registered profiles
+    dbService.getAllProfiles().then((profilesList) => {
+      setAllRegisteredProfiles(profilesList || []);
+    }).catch(err => {
+      console.error('Error fetching registered profiles', err);
     });
   }, []);
 
@@ -130,6 +141,21 @@ export default function Chat() {
                 if (prev.some((m) => m.id === payload.id)) return prev;
                 return [...prev, payload];
               });
+            } else {
+              // Increment unread counts for channels or DMs that are not currently active
+              setUnreadCounts((prev) => ({
+                ...prev,
+                [payload.channel]: (prev[payload.channel] || 0) + 1,
+              }));
+
+              // If it's a private message (DM), show a helpful toast notification
+              if (payload.channel.startsWith('dm:')) {
+                toast(`Mensaje privado de ${payload.userName}: "${payload.text.substring(0, 40)}${payload.text.length > 40 ? '...' : ''}"`, {
+                  icon: '💬',
+                  duration: 4000,
+                  position: 'bottom-right'
+                });
+              }
             }
             break;
           }
@@ -141,6 +167,9 @@ export default function Chat() {
                 .filter((u: any) => u.typing && u.userId !== profile!.id)
                 .map((u: any) => u.userName);
               setTypingUsers(typers);
+            }
+            if (payload.globalOnlineIds) {
+              setGlobalOnlineIds(payload.globalOnlineIds);
             }
             break;
           }
@@ -388,7 +417,23 @@ export default function Chat() {
     return colors[sum % colors.length];
   };
 
+  const getDmChannelId = (id1: string, id2: string) => {
+    const sorted = [id1, id2].sort();
+    return `dm:${sorted[0]}_${sorted[1]}`;
+  };
+
+  const getActiveDmPartner = () => {
+    if (!activeChannel.startsWith('dm:') || !profile) return null;
+    const parts = activeChannel.slice(3).split('_');
+    const partnerId = parts.find((id) => id !== profile.id);
+    if (!partnerId) return null;
+    return allRegisteredProfiles.find((u) => u.id === partnerId) || null;
+  };
+
   const getChannelColorClass = (id: string) => {
+    if (id.startsWith('dm:')) {
+      return 'bg-gradient-to-tr from-[#128c7e] to-emerald-400 text-zinc-950 shadow-md';
+    }
     switch (id) {
       case 'general': return 'bg-gradient-to-tr from-[#128c7e] to-[#25d366] text-zinc-950 shadow-md';
       case 'bets': return 'bg-gradient-to-tr from-amber-600 to-yellow-400 text-zinc-950 shadow-md';
@@ -511,6 +556,88 @@ export default function Chat() {
               </button>
             );
           })}
+
+          {/* Direct Private Chats Section */}
+          <div className="px-3 py-2 text-[10px] font-black uppercase text-zinc-500 tracking-widest bg-zinc-900/15 border-t border-zinc-850/30 mt-2 flex items-center justify-between sticky top-0 bg-[#111b21] z-10">
+            <span>Mensajes Privados (Usuarios)</span>
+            <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[8.5px] font-extrabold px-1.5 py-0.5 rounded uppercase">
+              {allRegisteredProfiles.filter(u => u.id !== profile?.id).length} Registrados
+            </span>
+          </div>
+
+          {allRegisteredProfiles
+            .filter((u) => u.id !== profile?.id)
+            .filter((u) => {
+              if (!searchQuery) return true;
+              const term = searchQuery.toLowerCase();
+              return (
+                (u.full_name || '').toLowerCase().includes(term) ||
+                (u.username || '').toLowerCase().includes(term)
+              );
+            })
+            .map((u) => {
+              const dmChanId = getDmChannelId(profile?.id || '', u.id);
+              const isSelected = activeChannel === dmChanId;
+              const isOnline = globalOnlineIds.includes(u.id);
+              const unread = unreadCounts[dmChanId] || 0;
+
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => {
+                    setActiveChannel(dmChanId);
+                    setShowChannelListMobile(false);
+                  }}
+                  className={`w-full text-left p-3.5 flex items-start gap-3.5 transition-all hover:bg-[#202c33]/40 ${
+                    isSelected ? 'bg-[#2a3942]' : ''
+                  }`}
+                >
+                  <div className="relative shrink-0">
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 border border-zinc-900/40 relative bg-zinc-800 text-zinc-200 uppercase font-black font-mono">
+                      {u.avatar_url ? (
+                        <img
+                          src={u.avatar_url}
+                          alt={u.full_name || u.username}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover rounded-full"
+                        />
+                      ) : (
+                        <span className="text-xs">
+                          {(u.full_name || u.username || 'U').substring(0, 2).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    {/* Live status dot */}
+                    <span
+                      className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#111b21] ${
+                        isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-500'
+                      }`}
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline mb-1">
+                      <h3 className="text-sm font-black text-white italic tracking-tight truncate flex-1">
+                        {u.full_name || u.username || 'Usuario'}
+                      </h3>
+                      <span className="text-[10px] text-zinc-500 font-bold shrink-0 ml-2">
+                        {u.points || 0} PTS
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-zinc-400 font-medium truncate flex-1 leading-normal italic">
+                        {isOnline ? '🟢 ¡En línea! Escríbele.' : '🔴 Offline. Mandar privado.'}
+                      </p>
+                      {unread > 0 && (
+                        <span className="shrink-0 flex items-center justify-center h-5 min-w-[20px] px-1 bg-emerald-500 text-[#111b21] text-[10px] font-black rounded-full shadow-sm">
+                          {unread}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
         </div>
       </div>
 
@@ -526,10 +653,16 @@ export default function Chat() {
 
         {/* Chat Title Header Container */}
         <div className="sticky top-0 bg-[#202c33] p-3.5 flex items-center justify-between border-b border-zinc-800/30 z-10">
-          <div className="flex items-center gap-3">
+          <div 
+            onClick={() => setShowGroupInfo(prev => !prev)}
+            className="flex items-center gap-3 cursor-pointer select-none group/hdr-click"
+          >
             {/* Back button for mobile view */}
             <button 
-              onClick={() => setShowChannelListMobile(true)} 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowChannelListMobile(true);
+              }} 
               className="md:hidden p-1.5 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white"
             >
               <ArrowLeft size={20} />
@@ -537,18 +670,37 @@ export default function Chat() {
 
             {/* Title Room Logo */}
             {(() => {
+              if (activeChannel.startsWith('dm:')) {
+                const partner = getActiveDmPartner();
+                return (
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center border border-zinc-900/40 shrink-0 group-hover/hdr-click:scale-105 transition-transform bg-zinc-800 text-zinc-200 uppercase font-black overflow-hidden select-none">
+                    {partner?.avatar_url ? (
+                      <img src={partner.avatar_url} alt={partner.full_name || partner.username} className="w-full h-full object-cover rounded-full" />
+                    ) : (
+                      <span className="text-xs">{(partner?.full_name || partner?.username || 'U').substring(0, 2).toUpperCase()}</span>
+                    )}
+                  </div>
+                );
+              }
               const activeChObj = CHANNELS.find((ch) => ch.id === activeChannel);
               const ActiveIcon = activeChObj?.icon || MessageSquare;
               return (
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center border border-zinc-900/40 shrink-0 ${getChannelColorClass(activeChannel)}`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center border border-zinc-900/40 shrink-0 group-hover/hdr-click:scale-105 transition-transform ${getChannelColorClass(activeChannel)}`}>
                   <ActiveIcon size={18} className="text-zinc-950 font-black" strokeWidth={2.5} />
                 </div>
               );
             })()}
 
             <div>
-              <h1 className="text-sm font-black text-white italic tracking-tight">
-                {CHANNELS.find((ch) => ch.id === activeChannel)?.name || 'Canal'}
+              <h1 className="text-sm font-black text-white italic tracking-tight group-hover/hdr-click:text-emerald-450 transition-colors flex items-center gap-1.5">
+                <span>
+                  {activeChannel.startsWith('dm:') 
+                    ? (getActiveDmPartner()?.full_name || getActiveDmPartner()?.username || 'Chat Privado') 
+                    : (CHANNELS.find((ch) => ch.id === activeChannel)?.name || 'Canal')}
+                </span>
+                <span className="text-[9px] font-black bg-emerald-500/10 text-emerald-450 px-1.5 py-0.5 rounded border border-emerald-500/20 uppercase tracking-widest hidden sm:inline-block">
+                  {activeChannel.startsWith('dm:') ? 'Privado' : 'Info'}
+                </span>
               </h1>
               {/* Online sub-indicators and typing indicator */}
               {typingUsers.length > 0 ? (
@@ -556,16 +708,31 @@ export default function Chat() {
                   {typingUsers.join(', ')} {typingUsers.length > 1 ? 'están escribiendo...' : 'está escribiendo...'}
                 </p>
               ) : (
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                  {onlineUsers.length > 0 
-                    ? `${onlineUsers.length} miembro${onlineUsers.length > 1 ? 's' : ''} activo${onlineUsers.length > 1 ? 's' : ''}` 
-                    : 'Uniendo al chat...'}
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest group-hover/hdr-click:text-zinc-200 transition-colors">
+                  {activeChannel.startsWith('dm:') ? (
+                    globalOnlineIds.includes(getActiveDmPartner()?.id || '') ? '🟢 Conectado' : '🔴 Desconectado'
+                  ) : (
+                    onlineUsers.length > 0 
+                      ? `${onlineUsers.length} miembro${onlineUsers.length > 1 ? 's' : ''} activo${onlineUsers.length > 1 ? 's' : ''}` 
+                      : 'Uniendo al chat...'
+                  )}
                 </p>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3 text-zinc-400">
+          <div className="flex items-center gap-2 sm:gap-3 text-zinc-400">
+            <button 
+              onClick={() => setShowGroupInfo(prev => !prev)}
+              className={`p-2 rounded-full transition-all ${
+                showGroupInfo 
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' 
+                  : 'hover:bg-white/5 hover:text-white'
+              }`}
+              title="Miembros Activos"
+            >
+              <Users size={16} />
+            </button>
             <button className="p-2 hover:bg-white/5 rounded-full hover:text-white transition-all hidden sm:block">
               <Phone size={16} />
             </button>
@@ -573,7 +740,11 @@ export default function Chat() {
               <Video size={16} />
             </button>
             <div className="w-[1px] h-4 bg-zinc-700 hidden sm:block" />
-            <button className="p-2 hover:bg-white/5 rounded-full hover:text-white transition-all">
+            <button 
+              onClick={() => setShowGroupInfo(prev => !prev)}
+              className="p-2 hover:bg-white/5 rounded-full hover:text-white transition-all"
+              title="Ver Info Grupo"
+            >
               <MoreVertical size={16} />
             </button>
           </div>
@@ -915,6 +1086,295 @@ export default function Chat() {
         </div>
 
       </div>
+
+      {/* 3. Right Sidebar: Group/Channel Info & Active Users (WhatsApp style) */}
+      <AnimatePresence>
+        {showGroupInfo && (
+          <motion.div
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: '320px', opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="hidden lg:flex w-80 shrink-0 flex-col bg-[#111b21] border-l border-zinc-800/80 z-20 overflow-hidden"
+          >
+            {/* Header */}
+            <div className="p-4 bg-[#202c33] flex items-center justify-between border-b border-zinc-800/20 shrink-0">
+              <h2 className="text-sm font-black text-white uppercase italic tracking-tight">Info del Grupo</h2>
+              <button 
+                onClick={() => setShowGroupInfo(false)} 
+                className="p-1.5 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white"
+                title="Cerrar Info"
+              >
+                <ArrowLeft className="rotate-180" size={18} />
+              </button>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto space-y-4 pb-6">
+              {/* Profile card avatar */}
+              <div className="bg-[#0b141a] p-6 text-center flex flex-col items-center border-b border-zinc-900/40">
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center border border-zinc-900/60 shadow-xl mb-4 overflow-hidden bg-zinc-800 ${getChannelColorClass(activeChannel)}`}>
+                  {(() => {
+                    if (activeChannel.startsWith('dm:')) {
+                      const partner = getActiveDmPartner();
+                      return partner?.avatar_url ? (
+                        <img src={partner.avatar_url} alt="Peer" className="w-full h-full object-cover rounded-full" />
+                      ) : (
+                        <span className="text-xl font-black text-zinc-300">{(partner?.full_name || partner?.username || 'U').substring(0, 2).toUpperCase()}</span>
+                      );
+                    }
+                    const activeChObj = CHANNELS.find((ch) => ch.id === activeChannel);
+                    const ActiveIcon = activeChObj?.icon || MessageSquare;
+                    return <ActiveIcon size={44} className="text-zinc-950" strokeWidth={2.5} />;
+                  })()}
+                </div>
+                <h3 className="text-base font-black text-white italic tracking-tight mb-1">
+                  {activeChannel.startsWith('dm:') 
+                    ? (getActiveDmPartner()?.full_name || getActiveDmPartner()?.username || 'Chat Privado')
+                    : (CHANNELS.find((ch) => ch.id === activeChannel)?.name || 'Canal')}
+                </h3>
+                <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wider">
+                  {activeChannel.startsWith('dm:') ? 'Contacto Privado' : `Grupo • ${onlineUsers.length} participantes`}
+                </p>
+              </div>
+
+              {/* Description box */}
+              <div className="bg-[#0b141a] p-4 border-y border-zinc-900/20">
+                <span className="text-[10px] font-black uppercase text-emerald-450 tracking-widest block mb-1">
+                  {activeChannel.startsWith('dm:') ? 'Detalle de Comunicación' : 'Descripción del canal'}
+                </span>
+                <p className="text-xs text-zinc-300 font-semibold leading-relaxed">
+                  {activeChannel.startsWith('dm:') 
+                    ? `Chat privado uno a uno de forma directa con ${getActiveDmPartner()?.full_name || getActiveDmPartner()?.username || 'tu contacto'}.` 
+                    : `${CHANNELS.find((ch) => ch.id === activeChannel)?.desc || ''}. Canal oficial de debate del PRODE Copa del Mundo.`}
+                </p>
+              </div>
+
+              {/* Personal Standings if DM */}
+              {activeChannel.startsWith('dm:') ? (
+                (() => {
+                  const partner = getActiveDmPartner();
+                  return (
+                    <div className="bg-[#0b141a] p-4 border-y border-zinc-900/20 space-y-2">
+                      <span className="text-[10px] font-black uppercase text-emerald-450 tracking-widest block">Estadísticas del Oponente</span>
+                      <div className="flex justify-between text-xs py-1.5 border-b border-zinc-850/40">
+                        <span className="text-zinc-400 font-bold">Puntos PRODE</span>
+                        <span className="text-[#ffd279] font-black">{partner?.points || 0} PTS</span>
+                      </div>
+                      <div className="flex justify-between text-xs py-1.5 border-b border-zinc-850/40">
+                        <span className="text-zinc-400 font-bold">Saldo de Cuenta</span>
+                        <span className="text-emerald-400 font-black">${partner?.balance || '0.00'}</span>
+                      </div>
+                      <div className="flex justify-between text-xs py-1.5">
+                        <span className="text-zinc-400 font-bold">Usuario ID</span>
+                        <span className="text-zinc-500 font-mono text-[9px] truncate max-w-[120px]" title={partner?.id}>{partner?.id}</span>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="bg-[#0b141a] border-y border-zinc-900/20">
+                  <div className="p-3.5 border-b border-zinc-900/40 flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">
+                      Miembros en Línea ({onlineUsers.length})
+                    </span>
+                    <Users size={12} className="text-[#ffd279]" />
+                  </div>
+                  
+                  <div className="divide-y divide-zinc-850/40 max-h-[300px] overflow-y-auto">
+                    {onlineUsers.length === 0 ? (
+                      <p className="text-xs text-zinc-500 italic p-4 text-center font-bold">Iniciando conexiones...</p>
+                    ) : (
+                      onlineUsers.map((u: any) => {
+                        const isCurrentUser = u.userId === profile?.id;
+                        return (
+                          <div key={u.userId} className="p-3 flex items-center gap-3.5 hover:bg-[#202c33]/20 transition-all">
+                            <div className="w-9 h-9 rounded-full bg-zinc-850 border border-zinc-800 overflow-hidden flex items-center justify-center shrink-0">
+                              {u.userAvatar ? (
+                                <img src={u.userAvatar} alt="Profile" className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-[11px] font-black italic text-zinc-400">
+                                  {u.userName.substring(0, 2).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-black text-white italic tracking-tight truncate">
+                                  {u.userName} {isCurrentUser && <span className="text-[10px] text-emerald-400 font-bold not-italic">(Tú)</span>}
+                                </p>
+                                {u.typing && (
+                                  <span className="text-[9px] font-extrabold text-emerald-400 italic animate-pulse">Escribiendo...</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[9.5px] uppercase tracking-wider text-zinc-500 font-black">
+                                  Activo • 🛡️ {u.userPoints || '0'} pts
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* For mobile & tablets, we can render an overlay drawer when showGroupInfo is true */}
+      <AnimatePresence>
+        {showGroupInfo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex justify-end"
+          >
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.3 }}
+              className="w-full max-w-[320px] h-full flex flex-col bg-[#111b21] shadow-2xl relative"
+            >
+              {/* Header */}
+              <div className="p-4 bg-[#202c33] flex items-center justify-between border-b border-zinc-800/20 shrink-0">
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setShowGroupInfo(false)} 
+                    className="p-1.5 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white"
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
+                  <h2 className="text-sm font-black text-white uppercase italic tracking-tight">Info del Grupo</h2>
+                </div>
+              </div>
+
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto space-y-4 pb-6 select-none">
+                {/* Profile card avatar */}
+                <div className="bg-[#0b141a] p-6 text-center flex flex-col items-center border-b border-zinc-900/40">
+                  <div className={`w-24 h-24 rounded-full flex items-center justify-center border border-zinc-900/60 shadow-xl mb-4 overflow-hidden bg-zinc-800 ${getChannelColorClass(activeChannel)}`}>
+                    {(() => {
+                      if (activeChannel.startsWith('dm:')) {
+                        const partner = getActiveDmPartner();
+                        return partner?.avatar_url ? (
+                          <img src={partner.avatar_url} alt="Peer" className="w-full h-full object-cover rounded-full" />
+                        ) : (
+                          <span className="text-xl font-black text-zinc-300">{(partner?.full_name || partner?.username || 'U').substring(0, 2).toUpperCase()}</span>
+                        );
+                      }
+                      const activeChObj = CHANNELS.find((ch) => ch.id === activeChannel);
+                      const ActiveIcon = activeChObj?.icon || MessageSquare;
+                      return <ActiveIcon size={44} className="text-[#111b21]" strokeWidth={2.5} />;
+                    })()}
+                  </div>
+                  <h3 className="text-base font-black text-white italic tracking-tight mb-1">
+                    {activeChannel.startsWith('dm:') 
+                      ? (getActiveDmPartner()?.full_name || getActiveDmPartner()?.username || 'Chat Privado')
+                      : (CHANNELS.find((ch) => ch.id === activeChannel)?.name || 'Canal')}
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wider">
+                    {activeChannel.startsWith('dm:') ? 'Contacto Privado' : `Grupo • ${onlineUsers.length} participantes`}
+                  </p>
+                </div>
+
+                {/* Description box */}
+                <div className="bg-[#0b141a] p-4 border-y border-zinc-900/20">
+                  <span className="text-[10px] font-black uppercase text-emerald-450 tracking-widest block mb-1">
+                    {activeChannel.startsWith('dm:') ? 'Detalle de Comunicación' : 'Descripción del canal'}
+                  </span>
+                  <p className="text-xs text-zinc-300 font-semibold leading-relaxed">
+                    {activeChannel.startsWith('dm:') 
+                      ? `Chat privado uno a uno de forma directa con ${getActiveDmPartner()?.full_name || getActiveDmPartner()?.username || 'tu contacto'}.` 
+                      : `${CHANNELS.find((ch) => ch.id === activeChannel)?.desc || ''}. Canal oficial de debate del PRODE Copa del Mundo.`}
+                  </p>
+                </div>
+
+                {/* Personal Standings if DM */}
+                {activeChannel.startsWith('dm:') ? (
+                  (() => {
+                    const partner = getActiveDmPartner();
+                    return (
+                      <div className="bg-[#0b141a] p-4 border-y border-zinc-900/20 space-y-2">
+                        <span className="text-[10px] font-black uppercase text-emerald-450 tracking-widest block">Estadísticas del Oponente</span>
+                        <div className="flex justify-between text-xs py-1.5 border-b border-zinc-850/40">
+                          <span className="text-zinc-400 font-bold">Puntos PRODE</span>
+                          <span className="text-[#ffd279] font-black">{partner?.points || 0} PTS</span>
+                        </div>
+                        <div className="flex justify-between text-xs py-1.5 border-b border-zinc-850/40">
+                          <span className="text-zinc-400 font-bold">Saldo de Cuenta</span>
+                          <span className="text-emerald-400 font-black">${partner?.balance || '0.00'}</span>
+                        </div>
+                        <div className="flex justify-between text-xs py-1.5">
+                          <span className="text-zinc-400 font-bold">Usuario ID</span>
+                          <span className="text-zinc-500 font-mono text-[9px] truncate max-w-[120px]" title={partner?.id}>{partner?.id}</span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="bg-[#0b141a] border-y border-zinc-900/20">
+                    <div className="p-3.5 border-b border-zinc-900/40 flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">
+                        Miembros en Línea ({onlineUsers.length})
+                      </span>
+                      <Users size={12} className="text-[#ffd279]" />
+                    </div>
+                    
+                    <div className="divide-y divide-zinc-850/40 overflow-y-auto">
+                      {onlineUsers.length === 0 ? (
+                        <p className="text-xs text-zinc-500 italic p-4 text-center font-bold">Iniciando conexiones...</p>
+                      ) : (
+                        onlineUsers.map((u: any) => {
+                          const isCurrentUser = u.userId === profile?.id;
+                          return (
+                            <div key={u.userId} className="p-3 flex items-center gap-3.5 hover:bg-[#202c33]/20 transition-all">
+                              <div className="w-9 h-9 rounded-full bg-zinc-850 border border-zinc-800 overflow-hidden flex items-center justify-center shrink-0">
+                                {u.userAvatar ? (
+                                  <img src={u.userAvatar} alt="Profile" className="w-full h-full object-cover" />
+                                ) : (
+                                  <span className="text-[11px] font-black italic text-zinc-400">
+                                    {u.userName.substring(0, 2).toUpperCase()}
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs font-black text-white italic tracking-tight truncate font-bold">
+                                    {u.userName} {isCurrentUser && <span className="text-[10px] text-emerald-400 font-bold not-italic">(Tú)</span>}
+                                  </p>
+                                  {u.typing && (
+                                    <span className="text-[9px] font-extrabold text-emerald-400 italic animate-pulse">Escribiendo...</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  <span className="text-[9.5px] uppercase tracking-wider text-zinc-500 font-black">
+                                    Activo • 🛡️ {u.userPoints || '0'} pts
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

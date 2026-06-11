@@ -1,5 +1,22 @@
 {
-  "general": [],
+  "general": [
+    {
+      "id": "selhsiqkafd",
+      "channel": "general",
+      "userId": "4ed78718-6c8d-4e51-9859-cf27ab96f7c1",
+      "userName": "Leandro",
+      "userAvatar": "https://zomkwcssnagtjqtjhqhe.supabase.co/storage/v1/object/public/avatars/4ed78718-6c8d-4e51-9859-cf27ab96f7c1-1778162494976.PNG?t=1778162496715",
+      "userPoints": 0,
+      "text": "hola",
+      "timestamp": "2026-06-11T14:26:35.453Z",
+      "repliedTo": null,
+      "reactions": {
+        "⚽": [
+          "4ed78718-6c8d-4e51-9859-cf27ab96f7c1"
+        ]
+      }
+    }
+  ],
   "bets": [],
   "scores": [],
   "support": []
